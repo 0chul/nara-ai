@@ -1,20 +1,22 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# 🚨 배포 에러(404) 해결 방법 (필독)
 
-# Run and deploy your AI Studio app
+현재 GitHub Actions 배포 중 `Failed to create deployment (status: 404)` 에러가 발생하고 있습니다. 이는 **저장소 설정**이 되지 않았기 때문입니다. **아래 순서대로 설정을 변경해주세요.**
 
-This contains everything you need to run your app locally.
+1. 이 저장소의 상단 메뉴에서 **Settings (설정)** 탭을 클릭합니다.
+2. 왼쪽 사이드바 메뉴에서 **Pages**를 클릭합니다.
+3. **Build and deployment** 섹션의 **Source** 항목을 찾습니다.
+4. 드롭다운을 클릭하여 **`GitHub Actions`**로 변경합니다. (기본값인 `Deploy from a branch`에서 변경 필요)
+   - *이 설정을 변경해야만 Actions가 배포를 수행할 수 있는 권한을 얻습니다.*
 
-View your app in AI Studio: https://ai.studio/apps/drive/1nhqZCf8U5I7HD0HBUK4vErQe_VFPtQEl
+---
 
-## Run Locally
+# 나라장터 입찰 검색 (KONEPS Bid Search)
 
-**Prerequisites:**  Node.js
+나라장터(KONEPS) 공공데이터 API를 활용하여 입찰 공고를 검색하고 로컬 DB에 저장하여 관리하는 대시보드입니다.
 
+## 주요 기능
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+- **입찰 공고 검색**: 기간별 나라장터 입찰 공고 조회
+- **로컬 저장소**: IndexedDB를 사용하여 검색된 공고를 브라우저에 저장 (새로고침 해도 데이터 유지)
+- **필터링**: 서울특별시 및 실내건축공사업(4990) 입찰 건 빠른 필터링 및 건수 확인
+- **API 설정**: 공공데이터포털 인증키 및 CORS 프록시 설정 지원
