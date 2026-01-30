@@ -86,14 +86,20 @@ const App: React.FC = () => {
     setLoading(false);
   };
 
-  // Filter Logic: Seoul AND (Interior OR 4990)
-  const filteredData = data.filter(item => {
-    if (!filterTarget) return true;
-    
+  // Helper to check conditions
+  const isTargetBid = (item: BidItem) => {
     const isSeoul = item.prtcptPsblRgnNm?.includes("서울");
     const isInterior = item.bidprcPsblIndstrytyNm?.includes("실내건축") || item.bidprcPsblIndstrytyNm?.includes("4990");
-    
     return isSeoul && isInterior;
+  };
+
+  // Calculate count of target items
+  const targetCount = data.filter(isTargetBid).length;
+
+  // Filter Logic
+  const filteredData = data.filter(item => {
+    if (!filterTarget) return true;
+    return isTargetBid(item);
   });
 
   return (
@@ -246,7 +252,14 @@ const App: React.FC = () => {
                     }`}
                 >
                     {filterTarget ? <CheckCircle2 className="w-4 h-4" /> : <Filter className="w-4 h-4" />}
-                    서울 + 실내건축(4990)만 보기
+                    서울 + 실내건축(4990)
+                    {targetCount > 0 && (
+                      <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
+                        filterTarget ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {targetCount}건
+                      </span>
+                    )}
                 </button>
                 <span className="text-xs text-gray-400 text-right whitespace-nowrap">
                 표시: {filteredData.length} / 전체: {data.length}
