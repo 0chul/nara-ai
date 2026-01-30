@@ -23,7 +23,8 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        # npm ci requires package-lock.json. Using npm install generates it if missing.
+        run: npm install
 
       - name: Build
         run: npm run build
