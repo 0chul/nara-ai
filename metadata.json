@@ -1,0 +1,5 @@
+{
+  "name": "나라장터 입찰 검색",
+  "description": "나라장터(KONEPS) 공공데이터 API를 통해 입찰 공고를 조회하는 대시보드입니다.",
+  "requestFramePermissions": []
+}
