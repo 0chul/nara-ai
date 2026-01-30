@@ -41,6 +41,16 @@ export const getAllBids = async (): Promise<BidItem[]> => {
   }
 };
 
+// Helper to get the most recent bid item (based on bidNtceDt)
+export const getLatestBid = async (): Promise<BidItem | undefined> => {
+  try {
+    return await db.bids.orderBy('bidNtceDt').reverse().first();
+  } catch (error) {
+    console.error("[DB] Failed to get latest bid:", error);
+    return undefined;
+  }
+};
+
 // Helper to clear DB
 export const clearBids = async () => {
   await db.bids.clear();
