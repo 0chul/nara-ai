@@ -27,7 +27,6 @@ const App: React.FC = () => {
   const [hasSearched, setHasSearched] = useState(false);
   
   const [data, setData] = useState<BidItem[]>([]);
-  const [scannedCount, setScannedCount] = useState(0); 
 
   // Initialize data from Local DB on mount
   useEffect(() => {
@@ -35,7 +34,6 @@ const App: React.FC = () => {
       const savedBids = await getAllBids();
       if (savedBids.length > 0) {
         setData(savedBids);
-        setScannedCount(savedBids.length);
         setHasSearched(true); // Treat existing data as a "search result"
       }
     };
@@ -78,12 +76,10 @@ const App: React.FC = () => {
         // 3. Load from DB to Display (Single Source of Truth)
         const dbItems = await getAllBids();
         setData(dbItems);
-        setScannedCount(result.items.length); // Count from API fetch
         setHasSearched(true);
       } else {
          // 0 results from API
          setData([]);
-         setScannedCount(0);
          setHasSearched(true);
       }
     }
