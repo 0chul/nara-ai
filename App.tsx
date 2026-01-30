@@ -3,9 +3,8 @@ import { fetchBidNotices } from './services/api';
 import { saveBids, getAllBids, clearBids } from './services/db';
 import { BidItem } from './types';
 import { BidCard } from './components/BidCard';
-import { StatsChart } from './components/StatsChart';
 import { ErrorAlert } from './components/ErrorAlert';
-import { Search, AlertCircle, Settings, RefreshCw, Database, ExternalLink, Globe2, Key, CheckSquare, Filter, Zap, Save } from 'lucide-react';
+import { Search, Settings, RefreshCw, Database, ExternalLink, Globe2, Key, Save, Filter, CheckCircle2 } from 'lucide-react';
 
 const App: React.FC = () => {
   // Auto-set date range: Last 30 days to get enough data
@@ -20,6 +19,7 @@ const App: React.FC = () => {
   const [useProxy, setUseProxy] = useState(true);
   
   const [showSettings, setShowSettings] = useState(false);
+  const [filterTarget, setFilterTarget] = useState(false); // Filter for Seoul & Interior
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,9 +71,7 @@ const App: React.FC = () => {
       // 2. Success - Save to DB
       const newItems = result.items || [];
       if (newItems.length > 0) {
-        // Optional: Clear old DB data to match current search strictly?
-        // Or keep appending? User asked for "Local DB" typically implies a cache.
-        // Let's Replace the DB content with new search results to keep it consistent with the "Search" action.
+        // Replace the DB content with new search results to keep it consistent with the "Search" action.
         await clearBids(); 
         await saveBids(newItems);
         
@@ -91,6 +89,16 @@ const App: React.FC = () => {
     }
     setLoading(false);
   };
+
+  // Filter Logic: Seoul AND (Interior OR 4990)
+  const filteredData = data.filter(item => {
+    if (!filterTarget) return true;
+    
+    const isSeoul = item.prtcptPsblRgnNm?.includes("서울");
+    const isInterior = item.bidprcPsblIndstrytyNm?.includes("실내건축") || item.bidprcPsblIndstrytyNm?.includes("4990");
+    
+    return isSeoul && isInterior;
+  });
 
   return (
     <div className="min-h-screen pb-12">
@@ -224,16 +232,30 @@ const App: React.FC = () => {
 
         {/* List Section */}
         <div className="space-y-4">
-          <div className="flex justify-between items-center mb-2">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2">
             <div className="flex flex-col">
               <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                 수집된 최신 공고 (Local DB)
               </h2>
             </div>
-            <span className="text-xs text-gray-400 text-right">
-               표시된 공고: {data.length}건<br/>
-               (로컬 DB 데이터)
-            </span>
+            
+            {/* Target Filter Button */}
+            <div className="flex items-center gap-4">
+                <button
+                    onClick={() => setFilterTarget(!filterTarget)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all border ${
+                        filterTarget 
+                        ? 'bg-red-50 text-red-600 border-red-200 ring-2 ring-red-100' 
+                        : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                    }`}
+                >
+                    {filterTarget ? <CheckCircle2 className="w-4 h-4" /> : <Filter className="w-4 h-4" />}
+                    서울 + 실내건축(4990)만 보기
+                </button>
+                <span className="text-xs text-gray-400 text-right whitespace-nowrap">
+                표시: {filteredData.length} / 전체: {data.length}
+                </span>
+            </div>
           </div>
 
           {loading ? (
@@ -251,9 +273,9 @@ const App: React.FC = () => {
                     <p className="mt-2 text-sm text-blue-600">이전 수집된 데이터({data.length}건)를 표시합니다.</p>
                 )}
             </div>
-          ) : data.length > 0 ? (
+          ) : filteredData.length > 0 ? (
             <div className="grid gap-4">
-              {data.map((item) => (
+              {filteredData.map((item) => (
                 <BidCard key={`${item.bidNtceNo}-${item.bidNtceOrd}`} item={item} />
               ))}
             </div>
@@ -262,11 +284,22 @@ const App: React.FC = () => {
                <div className="bg-gray-50 rounded-full w-14 h-14 flex items-center justify-center mx-auto mb-4">
                 <Database className="w-7 h-7 text-gray-400" />
               </div>
-              <h3 className="text-gray-900 font-bold text-lg mb-1">검색 결과가 없습니다</h3>
+              <h3 className="text-gray-900 font-bold text-lg mb-1">
+                {filterTarget ? '조건에 맞는 공고가 없습니다' : '검색 결과가 없습니다'}
+              </h3>
               <p className="text-gray-500 text-sm max-w-sm mx-auto mb-4">
-                API가 반환한 데이터가 없습니다. (0건)<br/>
-                디버그 URL을 클릭하여 브라우저 응답을 확인해보세요.
+                {filterTarget 
+                    ? '수집된 데이터 중 서울 및 실내건축공사업(4990) 공고가 없습니다.' 
+                    : 'API가 반환한 데이터가 없습니다. (0건)'}
               </p>
+              {filterTarget && (
+                  <button 
+                    onClick={() => setFilterTarget(false)}
+                    className="text-blue-600 hover:underline text-sm font-medium"
+                  >
+                    필터 해제하고 전체 보기
+                  </button>
+              )}
             </div>
           ) : (
             <div className="text-center py-24 bg-white rounded-xl border border-dashed border-gray-300">
