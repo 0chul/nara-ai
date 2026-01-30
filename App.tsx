@@ -1,18 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { fetchBidNotices } from './services/api';
-import { saveBids, getAllBids, clearBids } from './services/db';
+import { saveBids, getAllBids, clearBids, getLatestBid } from './services/db';
 import { BidItem } from './types';
 import { BidCard } from './components/BidCard';
 import { ErrorAlert } from './components/ErrorAlert';
-import { Search, Settings, RefreshCw, Database, ExternalLink, Globe2, Key, Save, Filter, CheckCircle2 } from 'lucide-react';
+import { StatusPieChart } from './components/StatusPieChart';
+import { StatsChart } from './components/StatsChart';
+import { Search, Settings, RefreshCw, Database, ExternalLink, Globe2, Key, Save, Filter, CheckCircle2, RotateCcw, CalendarPlus, BarChart3 } from 'lucide-react';
 
 const App: React.FC = () => {
   // Auto-set date range: Last 30 days to get enough data
   const today = new Date().toISOString().split('T')[0];
   const lastMonth = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-  const [startDate] = useState(lastMonth);
-  const [endDate] = useState(today);
+  const [startDate, setStartDate] = useState(lastMonth);
+  const [endDate, setEndDate] = useState(today);
   
   const [apiKey, setApiKey] = useState("07OoWggXTIVlamzKLV9cL9D3AmHJ0hU2glIVBAhayDo35JayhvW4zGgfnhXzPGoiiL1y3TES+a2DsvSD0CAslw=="); 
   const [shouldEncodeKey, setShouldEncodeKey] = useState(true);
@@ -22,6 +24,7 @@ const App: React.FC = () => {
   const [filterTarget, setFilterTarget] = useState(false); // Filter for Seoul & Interior
   
   const [loading, setLoading] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [debugUrl, setDebugUrl] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
@@ -30,23 +33,29 @@ const App: React.FC = () => {
 
   // Initialize data from Local DB on mount
   useEffect(() => {
-    const loadFromDb = async () => {
-      const savedBids = await getAllBids();
-      if (savedBids.length > 0) {
-        setData(savedBids);
-        setHasSearched(true); // Treat existing data as a "search result"
-      }
-    };
-    loadFromDb();
+    refreshDataFromDb();
   }, []);
 
-  const handleFetch = async () => {
+  const refreshDataFromDb = async () => {
+    const savedBids = await getAllBids();
+    if (savedBids.length > 0) {
+      setData(savedBids);
+      setHasSearched(true);
+    }
+  };
+
+  // Helper to convert YYYYMMDD... to YYYY-MM-DD
+  const parseDbDate = (dateStr: string): string => {
+    if (!dateStr || dateStr.length < 8) return '';
+    return `${dateStr.substring(0,4)}-${dateStr.substring(4,6)}-${dateStr.substring(6,8)}`;
+  };
+
+  // Mode 1: Incremental Update (Latest DB date -> Today)
+  const handleUpdateLatest = async () => {
     setLoading(true);
     setError(null);
+    setStatusMessage(null);
     setDebugUrl(null);
-    
-    // NOTE: We do NOT clear data immediately to prevent flickering if refresh fails
-    // setHasSearched(true); 
 
     if (!apiKey) {
       setError("서비스 키가 필요합니다.");
@@ -54,36 +63,99 @@ const App: React.FC = () => {
       return;
     }
 
-    // 1. Fetch from API
-    const result = await fetchBidNotices(startDate, endDate, apiKey, useProxy, shouldEncodeKey);
-
-    // Always set debugUrl if available
-    if (result.debugUrl) {
-      setDebugUrl(result.debugUrl);
-    }
-
-    if (result.error) {
-      setError(result.error);
-      // Even if error, keep showing old DB data if available
-    } else {
-      // 2. Success - Save to DB
-      const newItems = result.items || [];
-      if (newItems.length > 0) {
-        // Replace the DB content with new search results to keep it consistent with the "Search" action.
-        await clearBids(); 
-        await saveBids(newItems);
-        
-        // 3. Load from DB to Display (Single Source of Truth)
-        const dbItems = await getAllBids();
-        setData(dbItems);
-        setHasSearched(true);
+    try {
+      // 1. Determine Start Date
+      const latestBid = await getLatestBid();
+      let fetchStart = startDate;
+      
+      if (latestBid && latestBid.bidNtceDt) {
+        // If we have data, start from the latest date found in DB
+        // We fetch the same day again to catch any updates/additions on that day,
+        // Dexie.bulkPut will handle duplicates nicely (upsert).
+        fetchStart = parseDbDate(latestBid.bidNtceDt);
+        console.log(`[App] Found latest bid date: ${fetchStart}. Starting update from there.`);
       } else {
-         // 0 results from API
-         setData([]);
-         setHasSearched(true);
+        console.log(`[App] No existing data. Starting full fetch from ${startDate}`);
       }
+
+      // Check if up to date
+      if (fetchStart === today && latestBid) {
+        // Check timestamps if you wanted to be more precise, but for daily batches:
+        // Let's allow re-fetching 'today' just in case.
+      }
+
+      // 2. Fetch
+      setStatusMessage(`${fetchStart} 부터 ${endDate} 까지 데이터를 확인 중...`);
+      const result = await fetchBidNotices(fetchStart, endDate, apiKey, useProxy, shouldEncodeKey);
+
+      if (result.debugUrl) setDebugUrl(result.debugUrl);
+
+      if (result.error) {
+        setError(result.error);
+      } else {
+        const newItems = result.items || [];
+        if (newItems.length > 0) {
+          // 3. Save (Append/Upsert)
+          await saveBids(newItems);
+          await refreshDataFromDb();
+          setStatusMessage(`업데이트 완료! ${newItems.length}건의 공고가 갱신/추가되었습니다.`);
+        } else {
+          setStatusMessage("새로운 공고가 없습니다. (최신 상태)");
+        }
+        setHasSearched(true);
+      }
+    } catch (e: any) {
+      setError(e.message || "업데이트 중 오류 발생");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
+  };
+
+  // Mode 2: Full Refresh (Wipe DB -> Fetch All)
+  const handleFullReset = async () => {
+    if (!window.confirm("저장된 모든 데이터를 삭제하고 처음부터 다시 수집하시겠습니까?\n(데이터 양에 따라 시간이 걸릴 수 있습니다)")) {
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setStatusMessage("기존 데이터를 삭제하고 전체 기간을 재수집합니다...");
+    setDebugUrl(null);
+
+    if (!apiKey) {
+      setError("서비스 키가 필요합니다.");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      // 1. Clear DB
+      await clearBids();
+      setData([]);
+
+      // 2. Fetch
+      const result = await fetchBidNotices(startDate, endDate, apiKey, useProxy, shouldEncodeKey);
+      
+      if (result.debugUrl) setDebugUrl(result.debugUrl);
+
+      if (result.error) {
+        setError(result.error);
+      } else {
+        const newItems = result.items || [];
+        if (newItems.length > 0) {
+          await saveBids(newItems);
+          await refreshDataFromDb();
+          setStatusMessage(`전체 수집 완료! 총 ${newItems.length}건이 저장되었습니다.`);
+        } else {
+          setStatusMessage("해당 기간에 조회된 데이터가 없습니다.");
+        }
+        setHasSearched(true);
+      }
+    } catch (e: any) {
+      setError(e.message || "전체 수집 중 오류 발생");
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Helper to check conditions
@@ -115,7 +187,7 @@ const App: React.FC = () => {
               <h1 className="text-xl font-bold text-gray-900 tracking-tight">
                 나라장터 <span className="text-blue-600">입찰 검색</span>
                 <span className="ml-2 text-sm font-normal text-gray-500 hidden sm:inline-block">
-                  (전체 공고 조회 & 로컬 DB 저장)
+                  (Incremental DB Update)
                 </span>
               </h1>
             </div>
@@ -167,6 +239,26 @@ const App: React.FC = () => {
                   </div>
                   
                   <div className="border-t border-gray-200 pt-4">
+                     <div className="mb-4">
+                        <h4 className="text-xs font-semibold text-gray-600 mb-2">전체 수집 기준 기간</h4>
+                        <div className="flex items-center gap-2">
+                            <input 
+                                type="date" 
+                                value={startDate}
+                                onChange={(e) => setStartDate(e.target.value)}
+                                className="border border-gray-300 rounded px-2 py-1 text-sm"
+                            />
+                            <span className="text-gray-400">~</span>
+                            <input 
+                                type="date" 
+                                value={endDate}
+                                onChange={(e) => setEndDate(e.target.value)}
+                                className="border border-gray-300 rounded px-2 py-1 text-sm"
+                            />
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1">* '전체 재수집' 시에만 이 기간이 사용됩니다. '업데이트'는 자동으로 DB 마지막 날짜부터 오늘까지 수집합니다.</p>
+                     </div>
+
                     <div className="flex items-center gap-2 mb-2">
                         <input 
                         type="checkbox" 
@@ -186,28 +278,44 @@ const App: React.FC = () => {
           )}
 
           {/* Action Bar */}
-          <div className="flex items-center justify-between bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+          <div className="flex flex-col md:flex-row md:items-center justify-between bg-indigo-50 p-4 rounded-xl border border-indigo-100 gap-4">
             <div className="flex flex-col gap-1">
                <div className="flex items-center gap-2 text-indigo-800 font-bold">
                   <Save className="w-5 h-5 fill-indigo-800" />
-                  <span>로컬 DB 연동됨</span>
+                  <span>로컬 DB 관리</span>
                </div>
                <div className="text-sm text-indigo-600">
-                 API 데이터를 <strong>로컬 DB(IndexedDB)</strong>에 저장하고 불러옵니다.
+                 마지막 데이터: <strong>{data.length > 0 ? (data[0].bidNtceDt ? parseDbDate(data[0].bidNtceDt) : '날짜 없음') : '없음'}</strong>
                </div>
                <div className="text-xs text-gray-500 mt-1">
-                 데이터 기간: {startDate} ~ {endDate}
+                 '최신 공고 업데이트'는 마지막 날짜 이후 데이터만 가져옵니다.
                </div>
             </div>
             
-            <button 
-              onClick={handleFetch}
-              disabled={loading}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-lg font-bold shadow-sm transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed text-lg"
-            >
-              {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
-              {loading ? '데이터 요청' : '데이터 요청'}
-            </button>
+            <div className="flex items-center gap-2 self-end md:self-auto">
+              {/* Full Refresh Button */}
+              {showSettings && (
+                  <button 
+                  onClick={handleFullReset}
+                  disabled={loading}
+                  className="bg-white hover:bg-red-50 text-red-600 border border-red-200 px-4 py-3 rounded-lg font-medium shadow-sm transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed text-sm whitespace-nowrap"
+                  title="기존 DB를 지우고 기간 내 모든 데이터를 다시 받습니다."
+                >
+                  {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+                  전체 재수집
+                </button>
+              )}
+
+              {/* Incremental Update Button (Primary) */}
+              <button 
+                onClick={handleUpdateLatest}
+                disabled={loading}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-bold shadow-sm transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed text-lg whitespace-nowrap"
+              >
+                {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <CalendarPlus className="w-5 h-5" />}
+                {loading ? '수집 중...' : '최신 공고 업데이트'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -217,6 +325,14 @@ const App: React.FC = () => {
         
         <ErrorAlert message={error} debugUrl={debugUrl} />
         
+        {/* Success/Status Message */}
+        {statusMessage && !error && (
+            <div className="mb-6 bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center gap-3 animate-fade-in">
+                <CheckCircle2 className="w-5 h-5 text-blue-600" />
+                <p className="text-sm font-medium text-blue-800">{statusMessage}</p>
+            </div>
+        )}
+
         {/* Debug Info Link for Success Case (if no error but we want to see URL) */}
         {!error && debugUrl && hasSearched && (
            <div className="mb-4 text-right">
@@ -227,9 +343,23 @@ const App: React.FC = () => {
                 className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 hover:underline"
               >
                 <ExternalLink className="w-3 h-3" />
-                API 요청 URL 확인 (디버그용)
+                마지막 API 요청 URL 확인 (디버그용)
               </a>
            </div>
+        )}
+
+        {/* Analytics Charts */}
+        {hasSearched && data.length > 0 && !loading && (
+          <div className="mb-8">
+             <div className="flex items-center gap-2 mb-3">
+                <BarChart3 className="w-5 h-5 text-gray-500" />
+                <h2 className="text-lg font-bold text-gray-800">데이터 분석</h2>
+             </div>
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <StatusPieChart data={data} />
+                <StatsChart data={data} />
+             </div>
+          </div>
         )}
 
         {/* List Section */}
@@ -237,7 +367,7 @@ const App: React.FC = () => {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2">
             <div className="flex flex-col">
               <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                수집된 최신 공고 (Local DB)
+                보관함 (Local DB)
               </h2>
             </div>
             
@@ -294,12 +424,12 @@ const App: React.FC = () => {
                 <Database className="w-7 h-7 text-gray-400" />
               </div>
               <h3 className="text-gray-900 font-bold text-lg mb-1">
-                {filterTarget ? '조건에 맞는 공고가 없습니다' : '검색 결과가 없습니다'}
+                {filterTarget ? '조건에 맞는 공고가 없습니다' : '저장된 데이터가 없습니다'}
               </h3>
               <p className="text-gray-500 text-sm max-w-sm mx-auto mb-4">
                 {filterTarget 
                     ? '수집된 데이터 중 서울 및 실내건축공사업(4990) 공고가 없습니다.' 
-                    : 'API가 반환한 데이터가 없습니다. (0건)'}
+                    : '상단의 업데이트 버튼을 눌러 데이터를 수집해주세요.'}
               </p>
               {filterTarget && (
                   <button 
@@ -317,8 +447,8 @@ const App: React.FC = () => {
               </div>
               <h3 className="text-gray-900 font-bold text-lg mb-1">데이터 요청 대기</h3>
               <p className="text-gray-500 text-sm max-w-sm mx-auto mb-4">
-                상단의 '데이터 요청' 버튼을 눌러주세요.<br/>
-                API 연결 상태를 확인하기 위해 <strong>모든 공고</strong>를 가져옵니다.
+                상단의 '최신 공고 업데이트' 버튼을 눌러주세요.<br/>
+                기존 데이터를 유지하고 최신 내역만 추가합니다.
               </p>
             </div>
           )}
