@@ -45,7 +45,7 @@ export const StatusPieChart: React.FC<StatusPieChartProps> = ({ data }) => {
               paddingAngle={2}
               dataKey="value"
             >
-              {chartData.map((entry, index) => (
+              {chartData.map((_, index) => (
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} strokeWidth={1} />
               ))}
             </Pie>
