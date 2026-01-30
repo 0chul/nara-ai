@@ -33,7 +33,7 @@ export const StatsChart: React.FC<StatsChartProps> = ({ data }) => {
             contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
           />
           <Bar dataKey="count" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={20}>
-            {chartData.map((entry, index) => (
+            {chartData.map((_, index) => (
               <Cell key={`cell-${index}`} fill={index === 0 ? '#2563eb' : '#60a5fa'} />
             ))}
           </Bar>
