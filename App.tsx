@@ -69,23 +69,22 @@ const App: React.FC = () => {
       let fetchStart = startDate;
 
       if (latestBid && latestBid.bidNtceDt) {
-        // If we have data, start from the latest date found in DB
-        // We fetch the same day again to catch any updates/additions on that day,
-        // Dexie.bulkPut will handle duplicates nicely (upsert).
-        fetchStart = parseDbDate(latestBid.bidNtceDt);
-        console.log(`[App] Found latest bid date: ${fetchStart}. Starting update from there.`);
+        // Smart Incremental Update:
+        // Start from 7 days before the latest bid date to catch updates/corrections
+        const latestDateStr = parseDbDate(latestBid.bidNtceDt);
+        const latestDate = new Date(latestDateStr);
+        latestDate.setDate(latestDate.getDate() - 7);
+
+        fetchStart = latestDate.toISOString().split('T')[0];
+        console.log(`[App] Found latest bid date: ${latestDateStr}. Starting update from 7 days prior: ${fetchStart}`);
       } else {
         console.log(`[App] No existing data. Starting full fetch from ${startDate}`);
       }
 
-      // Check if up to date
-      if (fetchStart === today && latestBid) {
-        // Check timestamps if you wanted to be more precise, but for daily batches:
-        // Let's allow re-fetching 'today' just in case.
-      }
+      // Check if up to date (Optional logic depending on needs, but with -7 days we usually always fetch something)
 
       // 2. Fetch
-      setStatusMessage(`${fetchStart} 부터 ${endDate} 까지 데이터를 확인 중...`);
+      setStatusMessage(`${fetchStart} 부터 ${endDate} 까지 데이터를 확인 중... (최근 7일 변동분 포함)`);
       const result = await fetchBidNotices(fetchStart, endDate, apiKey, useProxy, shouldEncodeKey);
 
       if (result.debugUrl) setDebugUrl(result.debugUrl);
@@ -98,7 +97,7 @@ const App: React.FC = () => {
           // 3. Save (Append/Upsert)
           await saveBids(newItems);
           await refreshDataFromDb();
-          setStatusMessage(`업데이트 완료! ${newItems.length}건의 공고가 갱신/추가되었습니다.`);
+          setStatusMessage(`업데이트 완료! ${newItems.length}건이 갱신/추가되었습니다. (기간: ${fetchStart} ~ ${endDate})`);
         } else {
           setStatusMessage("새로운 공고가 없습니다. (최신 상태)");
         }
@@ -376,8 +375,8 @@ const App: React.FC = () => {
               <button
                 onClick={() => setFilterTarget(!filterTarget)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all border ${filterTarget
-                    ? 'bg-red-50 text-red-600 border-red-200 ring-2 ring-red-100'
-                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  ? 'bg-red-50 text-red-600 border-red-200 ring-2 ring-red-100'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
                   }`}
               >
                 {filterTarget ? <CheckCircle2 className="w-4 h-4" /> : <Filter className="w-4 h-4" />}
