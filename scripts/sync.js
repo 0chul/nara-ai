@@ -43,11 +43,9 @@ async function sync() {
 
             if (rawItems.length === 0) break;
 
-            // Normalize & Filter (Seoul + Interior 4990)
+            // Normalize & Filter (Seoul Only)
             const filtered = rawItems.filter(raw => {
-                const isSeoul = (raw.prtcptPsblRgnNm || "").includes("서울");
-                const isInterior = (raw.bidprcPsblIndstrytyNm || "").includes("실내건축") || (raw.bidprcPsblIndstrytyNm || "").includes("4990");
-                return isSeoul && isInterior;
+                return (raw.prtcptPsblRgnNm || "").includes("서울");
             }).map(raw => ({
                 bidNtceNo: raw.bidNtceNo,
                 bidNtceOrd: raw.bidNtceOrd,

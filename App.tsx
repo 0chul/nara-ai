@@ -187,9 +187,7 @@ const App: React.FC = () => {
 
   // Helper to check conditions
   const isTargetBid = (item: BidItem) => {
-    const isSeoul = item.prtcptPsblRgnNm?.includes("서울");
-    const isInterior = item.bidprcPsblIndstrytyNm?.includes("실내건축") || item.bidprcPsblIndstrytyNm?.includes("4990");
-    return isSeoul && isInterior;
+    return item.prtcptPsblRgnNm?.includes("서울");
   };
 
   // Calculate count of target items
@@ -302,7 +300,7 @@ const App: React.FC = () => {
                         className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                       />
                       <label htmlFor="saveFilterToggle" className="text-xs text-gray-700 font-medium">
-                        <strong>조건에 맞는 공고만 저장</strong> (서울+실내건축 데이터만 수집하여 용량 절약)
+                        <strong>조건에 맞는 공고만 저장</strong> (서울 지역 데이터만 수집하여 용량 절약)
                       </label>
                     </div>
 
@@ -426,12 +424,12 @@ const App: React.FC = () => {
               <button
                 onClick={() => setFilterTarget(!filterTarget)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all border ${filterTarget
-                  ? 'bg-red-50 text-red-600 border-red-200 ring-2 ring-red-100'
-                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                    ? 'bg-red-50 text-red-600 border-red-200 ring-2 ring-red-100'
+                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
                   }`}
               >
                 {filterTarget ? <CheckCircle2 className="w-4 h-4" /> : <Filter className="w-4 h-4" />}
-                서울 + 실내건축(4990)
+                서울 지역 공고만 보기
                 {targetCount > 0 && (
                   <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${filterTarget ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
                     }`}>
@@ -476,7 +474,7 @@ const App: React.FC = () => {
               </h3>
               <p className="text-gray-500 text-sm max-w-sm mx-auto mb-4">
                 {filterTarget
-                  ? '수집된 데이터 중 서울 및 실내건축공사업(4990) 공고가 없습니다.'
+                  ? '수집된 데이터 중 서울 지역 공고가 없습니다.'
                   : '상단의 업데이트 버튼을 눌러 데이터를 수집해주세요.'}
               </p>
               {filterTarget && (
