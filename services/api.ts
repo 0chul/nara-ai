@@ -29,6 +29,12 @@ const normalizeItem = (raw: any): BidItem => {
   const beginDt = raw.bidNtceBgnDt || (raw.bidBeginDate ? `${raw.bidBeginDate.replace(/-/g, '')}${raw.bidBeginTm?.replace(/:/g, '') || '0000'}` : "");
   const endDt = raw.bidNtceEndDt || (raw.bidClseDate ? `${raw.bidClseDate.replace(/-/g, '')}${raw.bidClseTm?.replace(/:/g, '') || '0000'}` : "");
 
+  // Fix broken URLs (some APIs return ^ instead of & in query params)
+  let finalUrl = raw.bidNtceUrl || "";
+  if (finalUrl.includes('^')) {
+    finalUrl = finalUrl.replace(/\^/g, '&');
+  }
+
   return {
     bidNtceNo: raw.bidNtceNo || "",
     bidNtceOrd: raw.bidNtceOrd || "00",
@@ -40,7 +46,7 @@ const normalizeItem = (raw: any): BidItem => {
     bidNtceEndDt: endDt,
     prtcptPsblRgnNm: raw.prtcptPsblRgnNm || "",
     bidprcPsblIndstrytyNm: raw.bidprcPsblIndstrytyNm || "",
-    bidNtceUrl: raw.bidNtceUrl || "",
+    bidNtceUrl: finalUrl,
     bidNtceSttusNm: raw.bidNtceSttusNm || "",
     bsnsDivNm: raw.bsnsDivNm || "",
     presmptPrce: raw.presmptPrce || raw.asignBdgtAmt || undefined,

@@ -6,7 +6,24 @@ import { BidCard } from './components/BidCard';
 import { ErrorAlert } from './components/ErrorAlert';
 import { StatusPieChart } from './components/StatusPieChart';
 import { StatsChart } from './components/StatsChart';
-import { Search, Settings, RefreshCw, Database, ExternalLink, Globe2, Key, Save, Filter, CheckCircle2, RotateCcw, CalendarPlus, BarChart3 } from 'lucide-react';
+import { TrendChart } from './components/TrendChart';
+import {
+  Search,
+  Settings,
+  Database,
+  RefreshCw,
+  CheckCircle2,
+  BarChart3,
+  Save,
+  ExternalLink,
+  CalendarPlus,
+  Filter,
+  FileText,
+  Key,
+  RotateCcw,
+  ChevronLeft,
+  ChevronRight
+} from 'lucide-react';
 
 const App: React.FC = () => {
   // Auto-set date range: Last 30 days to get enough data
@@ -31,6 +48,8 @@ const App: React.FC = () => {
   const [saveOnlyFiltered, setSaveOnlyFiltered] = useState(true); // Default to saving only target bids
 
   const [data, setData] = useState<BidItem[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 12;
 
   // Initialize data from Local DB on mount
   useEffect(() => {
@@ -42,6 +61,11 @@ const App: React.FC = () => {
     if (savedBids.length > 0) {
       setData(savedBids);
       setHasSearched(true);
+      setCurrentPage(1); // Reset to first page on refresh
+    } else {
+      setData([]);
+      setHasSearched(false);
+      setCurrentPage(1);
     }
   };
 
@@ -190,14 +214,18 @@ const App: React.FC = () => {
     return item.prtcptPsblRgnNm?.includes("서울");
   };
 
-  // Calculate count of target items
+  const displayedData = filterTarget ? data.filter(isTargetBid) : data;
   const targetCount = data.filter(isTargetBid).length;
 
-  // Filter Logic
-  const filteredData = data.filter(item => {
-    if (!filterTarget) return true;
-    return isTargetBid(item);
-  });
+  // Pagination logic
+  const totalPages = Math.ceil(displayedData.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedData = displayedData.slice(startIndex, startIndex + itemsPerPage);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 600, behavior: 'smooth' }); // Scroll back to list start
+  };
 
   return (
     <div className="min-h-screen pb-12">
@@ -332,8 +360,14 @@ const App: React.FC = () => {
                 <Save className="w-5 h-5 fill-indigo-800" />
                 <span>Supabase 클라우드 관리</span>
               </div>
-              <div className="text-sm text-indigo-600">
-                클라우드 최신 공고: <strong>{data.length > 0 ? (data[0].bidNtceDt ? parseDbDate(data[0].bidNtceDt) : '날짜 없음') : '없음'}</strong>
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                <div className="text-sm text-indigo-600 flex items-center gap-1">
+                  <FileText className="w-4 h-4" />
+                  저장된 공고: <strong>{data.length}건</strong>
+                </div>
+                <div className="text-sm text-indigo-600">
+                  최신 공고: <strong>{data.length > 0 ? (data[0].bidNtceDt ? parseDbDate(data[0].bidNtceDt) : '날짜 없음') : '없음'}</strong>
+                </div>
               </div>
               <div className="text-xs text-gray-500 mt-1">
                 매일 새벽 4시 자동 동기화 중. 필요 시 수동으로 업데이트하세요.
@@ -401,9 +435,10 @@ const App: React.FC = () => {
           <div className="mb-8">
             <div className="flex items-center gap-2 mb-3">
               <BarChart3 className="w-5 h-5 text-gray-500" />
-              <h2 className="text-lg font-bold text-gray-800">데이터 분석</h2>
+              <h2 className="text-lg font-bold text-gray-800">데이터 분석 대시보드</h2>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <TrendChart data={data} />
               <StatusPieChart data={data} />
               <StatsChart data={data} />
             </div>
@@ -417,15 +452,19 @@ const App: React.FC = () => {
               <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                 보관함 (Supabase Cloud)
               </h2>
+              <p className="text-xs text-gray-400 mt-0.5">전체 {displayedData.length}건 중 {startIndex + 1}-{Math.min(startIndex + itemsPerPage, displayedData.length)}건 표시</p>
             </div>
 
             {/* Target Filter Button */}
             <div className="flex items-center gap-4">
               <button
-                onClick={() => setFilterTarget(!filterTarget)}
+                onClick={() => {
+                  setFilterTarget(!filterTarget);
+                  setCurrentPage(1);
+                }}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all border ${filterTarget
-                    ? 'bg-red-50 text-red-600 border-red-200 ring-2 ring-red-100'
-                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  ? 'bg-red-50 text-red-600 border-red-200 ring-2 ring-red-100'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
                   }`}
               >
                 {filterTarget ? <CheckCircle2 className="w-4 h-4" /> : <Filter className="w-4 h-4" />}
@@ -433,13 +472,10 @@ const App: React.FC = () => {
                 {targetCount > 0 && (
                   <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${filterTarget ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
                     }`}>
-                    {targetCount}건
+                    {targetCount}
                   </span>
                 )}
               </button>
-              <span className="text-xs text-gray-400 text-right whitespace-nowrap">
-                표시: {filteredData.length} / 전체: {data.length}
-              </span>
             </div>
           </div>
 
@@ -458,16 +494,67 @@ const App: React.FC = () => {
                 <p className="mt-2 text-sm text-blue-600">이전 수집된 데이터({data.length}건)를 표시합니다.</p>
               )}
             </div>
-          ) : filteredData.length > 0 ? (
-            <div className="grid gap-4">
-              {filteredData.map((item) => (
-                <BidCard key={`${item.bidNtceNo}-${item.bidNtceOrd}`} item={item} />
-              ))}
-            </div>
+          ) : paginatedData.length > 0 ? (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {paginatedData.map((item) => (
+                  <BidCard key={`${item.bidNtceNo}-${item.bidNtceOrd}`} item={item} />
+                ))}
+              </div>
+
+              {/* Pagination UI */}
+              {totalPages > 1 && (
+                <div className="flex justify-center items-center gap-2 mt-12 pb-12">
+                  <button
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="p-2 rounded-lg border border-gray-200 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 bg-white shadow-sm transition-all"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+
+                  <div className="flex items-center gap-1">
+                    {[...Array(totalPages)].map((_, i) => {
+                      const page = i + 1;
+                      // Logic to show a limited window: 1, current-2 to current+2, last
+                      if (
+                        page === 1 ||
+                        page === totalPages ||
+                        (page >= currentPage - 2 && page <= currentPage + 2)
+                      ) {
+                        return (
+                          <button
+                            key={page}
+                            onClick={() => handlePageChange(page)}
+                            className={`w-10 h-10 rounded-lg text-sm font-bold transition-all ${currentPage === page
+                                ? 'bg-indigo-600 text-white shadow-md'
+                                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                              }`}
+                          >
+                            {page}
+                          </button>
+                        );
+                      } else if (page === currentPage - 3 || page === currentPage + 3) {
+                        return <span key={page} className="px-1 text-gray-400">...</span>;
+                      }
+                      return null;
+                    })}
+                  </div>
+
+                  <button
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className="p-2 rounded-lg border border-gray-200 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 bg-white shadow-sm transition-all"
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                </div>
+              )}
+            </>
           ) : hasSearched ? (
-            <div className="text-center py-24 bg-white rounded-xl border border-dashed border-gray-300">
-              <div className="bg-gray-50 rounded-full w-14 h-14 flex items-center justify-center mx-auto mb-4">
-                <Database className="w-7 h-7 text-gray-400" />
+            <div className="bg-white rounded-2xl p-12 text-center border border-dashed border-gray-200">
+              <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Search className="w-8 h-8 text-gray-300" />
               </div>
               <h3 className="text-gray-900 font-bold text-lg mb-1">
                 {filterTarget ? '조건에 맞는 공고가 없습니다' : '저장된 데이터가 없습니다'}

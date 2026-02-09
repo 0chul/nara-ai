@@ -57,7 +57,7 @@ async function sync() {
                 bidNtceEndDt: raw.bidNtceEndDt,
                 prtcptPsblRgnNm: raw.prtcptPsblRgnNm,
                 bidprcPsblIndstrytyNm: raw.bidprcPsblIndstrytyNm,
-                bidNtceUrl: raw.bidNtceUrl,
+                bidNtceUrl: raw.bidNtceUrl ? raw.bidNtceUrl.replace(/\^/g, '&') : "",
                 bidNtceSttusNm: raw.bidNtceSttusNm,
                 bsnsDivNm: raw.bsnsDivNm,
                 presmptPrce: raw.presmptPrce || raw.asignBdgtAmt
