@@ -1,18 +1,16 @@
 import { BidItem, ApiResponse } from '../types';
 
 const BASE_URL = "https://apis.data.go.kr/1230000/ao/PubDataOpnStdService/getDataSetOpnStdBidPblancInfo";
-// Using corsproxy.io which is often more reliable for preserving query parameters exactly as is
-const PROXY_BASE = "https://corsproxy.io/?";
 
-const PAGE_SIZE = 50; 
-const MAX_PAGES_TO_FETCH = 6; 
+const PAGE_SIZE = 50;
+const MAX_PAGES_TO_FETCH = 40;
 
 // Helper to format date to YYYYMMDDHHMM safely
 const formatDateForApi = (dateStr: string, isEnd: boolean = false): string => {
   if (!dateStr) return '';
   const parts = dateStr.split('-');
   if (parts.length !== 3) return '';
-  
+
   const [year, month, day] = parts;
   const time = isEnd ? '2359' : '0000';
   return `${year}${month}${day}${time}`;
@@ -20,28 +18,22 @@ const formatDateForApi = (dateStr: string, isEnd: boolean = false): string => {
 
 // Data Normalizer: Maps raw API fields to our standard BidItem interface
 const normalizeItem = (raw: any): BidItem => {
-  // 1. Construct bidNtceDt (Crucial for sorting/DB index)
-  // The API often returns 'bidNtceDate' (YYYY-MM-DD) and 'bidNtceBgn' (HH:MM) separately
   let normalizedDt = raw.bidNtceDt || "";
   if (!normalizedDt && raw.bidNtceDate) {
-    const datePart = raw.bidNtceDate.replace(/-/g, ''); // 2025-12-30 -> 20251230
-    const timePart = (raw.bidNtceBgn || raw.bidBeginTm || "00:00").replace(/:/g, ''); // 00:13 -> 0013
+    const datePart = raw.bidNtceDate.replace(/-/g, '');
+    const timePart = (raw.bidNtceBgn || raw.bidBeginTm || "00:00").replace(/:/g, '');
     normalizedDt = `${datePart}${timePart}`;
   }
 
-  // 2. Map Demand Institution Name
-  // API uses 'dmndInsttNm', but standard might be 'dminsttNm'
   const demandInstName = raw.dminsttNm || raw.dmndInsttNm || "";
-
-  // 3. Map Dates for Display
-  const beginDt = raw.bidNtceBgnDt || (raw.bidBeginDate ? `${raw.bidBeginDate.replace(/-/g,'')}${raw.bidBeginTm?.replace(/:/g,'') || '0000'}` : "");
-  const endDt = raw.bidNtceEndDt || (raw.bidClseDate ? `${raw.bidClseDate.replace(/-/g,'')}${raw.bidClseTm?.replace(/:/g,'') || '0000'}` : "");
+  const beginDt = raw.bidNtceBgnDt || (raw.bidBeginDate ? `${raw.bidBeginDate.replace(/-/g, '')}${raw.bidBeginTm?.replace(/:/g, '') || '0000'}` : "");
+  const endDt = raw.bidNtceEndDt || (raw.bidClseDate ? `${raw.bidClseDate.replace(/-/g, '')}${raw.bidClseTm?.replace(/:/g, '') || '0000'}` : "");
 
   return {
     bidNtceNo: raw.bidNtceNo || "",
     bidNtceOrd: raw.bidNtceOrd || "00",
     bidNtceNm: raw.bidNtceNm || "공고명 없음",
-    bidNtceDt: normalizedDt, // Used for sorting
+    bidNtceDt: normalizedDt,
     ntceInsttNm: raw.ntceInsttNm || "",
     dminsttNm: demandInstName,
     bidNtceBgnDt: beginDt,
@@ -51,7 +43,7 @@ const normalizeItem = (raw: any): BidItem => {
     bidNtceUrl: raw.bidNtceUrl || "",
     bidNtceSttusNm: raw.bidNtceSttusNm || "",
     bsnsDivNm: raw.bsnsDivNm || "",
-    presmptPrce: raw.presmptPrce || raw.asignBdgtAmt || undefined, // Fallback to budget if presumed price is missing
+    presmptPrce: raw.presmptPrce || raw.asignBdgtAmt || undefined,
   };
 };
 
@@ -59,12 +51,11 @@ const fetchSinglePage = async (
   pageNo: number,
   startDate: string,
   endDate: string,
-  serviceKey: string,
-  useProxy: boolean
+  serviceKey: string
 ): Promise<{ items: BidItem[], totalCount: number, error?: string, rawUrl?: string }> => {
   try {
     const queryParams = [
-      `serviceKey=${serviceKey}`, 
+      `serviceKey=${serviceKey}`,
       `pageNo=${pageNo}`,
       `numOfRows=${PAGE_SIZE}`,
       `type=json`,
@@ -72,8 +63,7 @@ const fetchSinglePage = async (
       `bidNtceEndDt=${formatDateForApi(endDate, true)}`
     ].join('&');
 
-    const targetUrl = `${BASE_URL}?${queryParams}`;
-    const fetchUrl = useProxy ? `${PROXY_BASE}${encodeURIComponent(targetUrl)}` : targetUrl;
+    const fetchUrl = `${BASE_URL}?${queryParams}`;
 
     console.log(`[API] Fetching Page ${pageNo}`);
 
@@ -81,25 +71,23 @@ const fetchSinglePage = async (
     if (!response.ok) throw new Error(`네트워크 오류: ${response.status}`);
 
     const text = await response.text();
-    
+
     if (text.trim().startsWith('<')) {
-        // XML Error handling...
-        const msgMatch = text.match(/<errMsg>(.*?)<\/errMsg>/) || text.match(/<returnAuthMsg>(.*?)<\/returnAuthMsg>/);
-        if (msgMatch) throw new Error(`API 에러: ${msgMatch[1]}`);
-        throw new Error("API가 JSON이 아닌 XML을 반환했습니다.");
+      const msgMatch = text.match(/<errMsg>(.*?)<\/errMsg>/) || text.match(/<returnAuthMsg>(.*?)<\/returnAuthMsg>/);
+      if (msgMatch) throw new Error(`API 에러: ${msgMatch[1]}`);
+      throw new Error("API가 JSON이 아닌 XML을 반환했습니다.");
     }
 
     let data: ApiResponse;
     try {
-        data = JSON.parse(text);
+      data = JSON.parse(text);
     } catch (e) {
-        throw new Error("JSON 파싱 실패");
+      throw new Error("JSON 파싱 실패");
     }
 
     const resultCode = data.response?.header?.resultCode;
     if (resultCode !== "00") throw new Error(`API 코드 오류: ${resultCode}`);
 
-    // Parse items dynamically
     const bodyItems = data.response?.body?.items;
     let rawItems: any[] = [];
 
@@ -109,13 +97,12 @@ const fetchSinglePage = async (
       else if (bodyItems.item) rawItems = [bodyItems.item];
     }
 
-    // NORMALIZE ITEMS HERE
     const normalizedItems = rawItems.map(normalizeItem);
 
     return {
       items: normalizedItems,
       totalCount: data.response?.body?.totalCount || 0,
-      rawUrl: targetUrl 
+      rawUrl: fetchUrl
     };
   } catch (err: any) {
     console.warn(`Page ${pageNo} fetch failed:`, err.message);
@@ -127,45 +114,44 @@ export const fetchBidNotices = async (
   startDate: string,
   endDate: string,
   apiKey: string,
-  useProxy: boolean = true,
   shouldEncodeKey: boolean = true
 ): Promise<{ items: BidItem[], totalCount: number, scannedCount: number, error?: string, debugUrl?: string }> => {
-  
+
   try {
     const trimmedKey = apiKey.trim();
     const serviceKey = shouldEncodeKey ? encodeURIComponent(trimmedKey) : trimmedKey;
 
-    const firstPage = await fetchSinglePage(1, startDate, endDate, serviceKey, useProxy);
+    const firstPage = await fetchSinglePage(1, startDate, endDate, serviceKey);
     const debugUrl = firstPage.rawUrl;
 
     if (firstPage.error) {
-       return { 
-         items: [], 
-         totalCount: 0, 
-         scannedCount: 0, 
-         error: firstPage.error,
-         debugUrl: debugUrl || `${BASE_URL}?serviceKey=${serviceKey}...`
-       };
+      return {
+        items: [],
+        totalCount: 0,
+        scannedCount: 0,
+        error: firstPage.error,
+        debugUrl: debugUrl || `${BASE_URL}?serviceKey=${serviceKey}...`
+      };
     }
 
     let allItems = [...firstPage.items];
     const totalCount = firstPage.totalCount;
 
     if (totalCount > PAGE_SIZE) {
-       const totalPages = Math.ceil(totalCount / PAGE_SIZE);
-       const pagesToFetch = Math.min(totalPages, MAX_PAGES_TO_FETCH);
-       
-       const promises = [];
-       for (let i = 2; i <= pagesToFetch; i++) {
-          promises.push(fetchSinglePage(i, startDate, endDate, serviceKey, useProxy));
-       }
-       
-       const results = await Promise.all(promises);
-       results.forEach(res => {
-          if (res.items && res.items.length > 0) {
-             allItems = [...allItems, ...res.items];
-          }
-       });
+      const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+      const pagesToFetch = Math.min(totalPages, MAX_PAGES_TO_FETCH);
+
+      const promises = [];
+      for (let i = 2; i <= pagesToFetch; i++) {
+        promises.push(fetchSinglePage(i, startDate, endDate, serviceKey));
+      }
+
+      const results = await Promise.all(promises);
+      results.forEach(res => {
+        if (res.items && res.items.length > 0) {
+          allItems = [...allItems, ...res.items];
+        }
+      });
     }
 
     return {

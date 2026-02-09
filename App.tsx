@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { fetchBidNotices } from './services/api';
-import { saveBids, getAllBids, clearBids, getLatestBid } from './services/db';
+import { saveBids, getAllBids, clearBids, getLatestBid, cleanupOldBids } from './services/db';
 import { BidItem } from './types';
 import { BidCard } from './components/BidCard';
 import { ErrorAlert } from './components/ErrorAlert';
@@ -15,20 +15,21 @@ const App: React.FC = () => {
 
   const [startDate, setStartDate] = useState(lastMonth);
   const [endDate, setEndDate] = useState(today);
-  
-  const [apiKey, setApiKey] = useState("07OoWggXTIVlamzKLV9cL9D3AmHJ0hU2glIVBAhayDo35JayhvW4zGgfnhXzPGoiiL1y3TES+a2DsvSD0CAslw=="); 
+
+  const [apiKey, setApiKey] = useState("07OoWggXTIVlamzKLV9cL9D3AmHJ0hU2glIVBAhayDo35JayhvW4zGgfnhXzPGoiiL1y3TES+a2DsvSD0CAslw==");
   const [shouldEncodeKey, setShouldEncodeKey] = useState(true);
-  const [useProxy, setUseProxy] = useState(true);
-  
+
   const [showSettings, setShowSettings] = useState(false);
   const [filterTarget, setFilterTarget] = useState(false); // Filter for Seoul & Interior
-  
+
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [debugUrl, setDebugUrl] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
-  
+  const [retentionDays, setRetentionDays] = useState(60); // Default 60 days
+  const [saveOnlyFiltered, setSaveOnlyFiltered] = useState(true); // Default to saving only target bids
+
   const [data, setData] = useState<BidItem[]>([]);
 
   // Initialize data from Local DB on mount
@@ -47,7 +48,7 @@ const App: React.FC = () => {
   // Helper to convert YYYYMMDD... to YYYY-MM-DD
   const parseDbDate = (dateStr: string): string => {
     if (!dateStr || dateStr.length < 8) return '';
-    return `${dateStr.substring(0,4)}-${dateStr.substring(4,6)}-${dateStr.substring(6,8)}`;
+    return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
   };
 
   // Mode 1: Incremental Update (Latest DB date -> Today)
@@ -67,7 +68,7 @@ const App: React.FC = () => {
       // 1. Determine Start Date
       const latestBid = await getLatestBid();
       let fetchStart = startDate;
-      
+
       if (latestBid && latestBid.bidNtceDt) {
         // If we have data, start from the latest date found in DB
         // We fetch the same day again to catch any updates/additions on that day,
@@ -86,7 +87,7 @@ const App: React.FC = () => {
 
       // 2. Fetch
       setStatusMessage(`${fetchStart} 부터 ${endDate} 까지 데이터를 확인 중...`);
-      const result = await fetchBidNotices(fetchStart, endDate, apiKey, useProxy, shouldEncodeKey);
+      const result = await fetchBidNotices(fetchStart, endDate, apiKey, shouldEncodeKey);
 
       if (result.debugUrl) setDebugUrl(result.debugUrl);
 
@@ -95,10 +96,24 @@ const App: React.FC = () => {
       } else {
         const newItems = result.items || [];
         if (newItems.length > 0) {
-          // 3. Save (Append/Upsert)
-          await saveBids(newItems);
+          // 3. Filter before saving (Optimization)
+          let itemsToSave = newItems;
+          if (saveOnlyFiltered) {
+            itemsToSave = newItems.filter(isTargetBid);
+            console.log(`[App] Filtering: ${newItems.length} scanned -> ${itemsToSave.length} matched criteria.`);
+          }
+
+          // 4. Save
+          if (itemsToSave.length > 0) {
+            await saveBids(itemsToSave);
+            setStatusMessage(`업데이트 완료! ${newItems.length}건을 스캔하여 ${itemsToSave.length}건의 유효 공고를 저장했습니다.`);
+          } else {
+            setStatusMessage("수집된 공고 중 조건에 맞는 새로운 공고가 없습니다.");
+          }
+
+          // 5. Cleanup Old Data
+          await cleanupOldBids(retentionDays);
           await refreshDataFromDb();
-          setStatusMessage(`업데이트 완료! ${newItems.length}건의 공고가 갱신/추가되었습니다.`);
         } else {
           setStatusMessage("새로운 공고가 없습니다. (최신 상태)");
         }
@@ -134,8 +149,8 @@ const App: React.FC = () => {
       setData([]);
 
       // 2. Fetch
-      const result = await fetchBidNotices(startDate, endDate, apiKey, useProxy, shouldEncodeKey);
-      
+      const result = await fetchBidNotices(startDate, endDate, apiKey, shouldEncodeKey);
+
       if (result.debugUrl) setDebugUrl(result.debugUrl);
 
       if (result.error) {
@@ -143,9 +158,21 @@ const App: React.FC = () => {
       } else {
         const newItems = result.items || [];
         if (newItems.length > 0) {
-          await saveBids(newItems);
-          await refreshDataFromDb();
-          setStatusMessage(`전체 수집 완료! 총 ${newItems.length}건이 저장되었습니다.`);
+          // Filter before saving
+          let itemsToSave = newItems;
+          if (saveOnlyFiltered) {
+            itemsToSave = newItems.filter(isTargetBid);
+          }
+
+          if (itemsToSave.length > 0) {
+            await saveBids(itemsToSave);
+            await refreshDataFromDb();
+            setStatusMessage(`전체 수집 완료! 조건에 맞는 ${itemsToSave.length}건이 저장되었습니다.`);
+          } else {
+            setStatusMessage("조회된 데이터 중 조건에 맞는 공고가 없습니다.");
+          }
+
+          await cleanupOldBids(retentionDays);
         } else {
           setStatusMessage("해당 기간에 조회된 데이터가 없습니다.");
         }
@@ -187,13 +214,13 @@ const App: React.FC = () => {
               <h1 className="text-xl font-bold text-gray-900 tracking-tight">
                 나라장터 <span className="text-blue-600">입찰 검색</span>
                 <span className="ml-2 text-sm font-normal text-gray-500 hidden sm:inline-block">
-                  (Incremental DB Update)
+                  (Supabase Cloud Sync)
                 </span>
               </h1>
             </div>
-            
+
             <div className="flex items-center gap-3">
-              <button 
+              <button
                 onClick={() => setShowSettings(!showSettings)}
                 className={`p-2 rounded-full transition-colors ${showSettings ? 'bg-blue-100 text-blue-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
                 title="설정"
@@ -208,94 +235,117 @@ const App: React.FC = () => {
       {/* Settings Panel */}
       <div className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          
-          {showSettings && (
-             <div className="mb-6 p-5 bg-gray-50 rounded-xl border border-gray-200 shadow-sm">
-                <h3 className="font-bold text-gray-800 mb-4 text-sm flex items-center gap-2">
-                  <Key className="w-4 h-4 text-gray-500" /> API 및 연결 설정
-                </h3>
-                <div className="flex flex-col gap-5">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">인증키 (Service Key)</label>
-                    <input 
-                      type="text" 
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      className="w-full text-sm border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 font-mono bg-white p-2.5"
-                      placeholder="공공데이터포털 인증키 입력"
-                    />
-                    <div className="flex items-center gap-2 mt-2">
-                        <input 
-                            type="checkbox" 
-                            id="encodeToggle"
-                            checked={shouldEncodeKey}
-                            onChange={(e) => setShouldEncodeKey(e.target.checked)}
-                            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                        />
-                        <label htmlFor="encodeToggle" className="text-xs text-gray-600 select-none">
-                            <strong>인증키 URL 인코딩 적용</strong> (일반 인증키 Decoding 입력 시 체크, %가 포함된 키는 체크 해제)
-                        </label>
-                    </div>
-                  </div>
-                  
-                  <div className="border-t border-gray-200 pt-4">
-                     <div className="mb-4">
-                        <h4 className="text-xs font-semibold text-gray-600 mb-2">전체 수집 기준 기간</h4>
-                        <div className="flex items-center gap-2">
-                            <input 
-                                type="date" 
-                                value={startDate}
-                                onChange={(e) => setStartDate(e.target.value)}
-                                className="border border-gray-300 rounded px-2 py-1 text-sm"
-                            />
-                            <span className="text-gray-400">~</span>
-                            <input 
-                                type="date" 
-                                value={endDate}
-                                onChange={(e) => setEndDate(e.target.value)}
-                                className="border border-gray-300 rounded px-2 py-1 text-sm"
-                            />
-                        </div>
-                        <p className="text-xs text-gray-400 mt-1">* '전체 재수집' 시에만 이 기간이 사용됩니다. '업데이트'는 자동으로 DB 마지막 날짜부터 오늘까지 수집합니다.</p>
-                     </div>
 
-                    <div className="flex items-center gap-2 mb-2">
-                        <input 
-                        type="checkbox" 
-                        id="proxyToggle"
-                        checked={useProxy}
-                        onChange={(e) => setUseProxy(e.target.checked)}
+          {showSettings && (
+            <div className="mb-6 p-5 bg-gray-50 rounded-xl border border-gray-200 shadow-sm">
+              <h3 className="font-bold text-gray-800 mb-4 text-sm flex items-center gap-2">
+                <Key className="w-4 h-4 text-gray-500" /> API 및 연결 설정
+              </h3>
+              <div className="flex flex-col gap-5">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">인증키 (Service Key)</label>
+                  <input
+                    type="text"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    className="w-full text-sm border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 font-mono bg-white p-2.5"
+                    placeholder="공공데이터포털 인증키 입력"
+                  />
+                  <div className="flex items-center gap-2 mt-2">
+                    <input
+                      type="checkbox"
+                      id="encodeToggle"
+                      checked={shouldEncodeKey}
+                      onChange={(e) => setShouldEncodeKey(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <label htmlFor="encodeToggle" className="text-xs text-gray-600 select-none">
+                      <strong>인증키 URL 인코딩 적용</strong> (일반 인증키 Decoding 입력 시 체크, %가 포함된 키는 체크 해제)
+                    </label>
+                  </div>
+                </div>
+
+                <div className="border-t border-gray-200 pt-4">
+                  <div className="mb-4">
+                    <h4 className="text-xs font-semibold text-gray-600 mb-2">전체 수집 기준 기간</h4>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="border border-gray-300 rounded px-2 py-1 text-sm"
+                      />
+                      <span className="text-gray-400">~</span>
+                      <input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className="border border-gray-300 rounded px-2 py-1 text-sm"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">* '전체 재수집' 시 최근 30일 내 최대 2,000건의 공고를 분석합니다.</p>
+                  </div>
+                </div>
+
+                <div className="border-t border-gray-200 pt-4">
+                  <h4 className="text-xs font-semibold text-gray-600 mb-3 flex items-center gap-2">
+                    <Filter className="w-3 h-3" /> 데이터 최적화 및 보관 설정
+                  </h4>
+
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="saveFilterToggle"
+                        checked={saveOnlyFiltered}
+                        onChange={(e) => setSaveOnlyFiltered(e.target.checked)}
                         className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                        />
-                        <label htmlFor="proxyToggle" className="text-sm font-medium text-gray-700 select-none flex items-center gap-1.5">
-                        <Globe2 className="w-4 h-4 text-gray-500" />
-                        브라우저 CORS 우회 (Proxy 사용)
-                        </label>
+                      />
+                      <label htmlFor="saveFilterToggle" className="text-xs text-gray-700 font-medium">
+                        <strong>조건에 맞는 공고만 저장</strong> (서울+실내건축 데이터만 수집하여 용량 절약)
+                      </label>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs text-gray-600 font-medium">데이터 보관 기간:</label>
+                      <select
+                        value={retentionDays}
+                        onChange={(e) => setRetentionDays(Number(e.target.value))}
+                        className="text-xs border-gray-300 rounded p-1 bg-white"
+                      >
+                        <option value={30}>30일</option>
+                        <option value={60}>60일</option>
+                        <option value={90}>90일</option>
+                        <option value={180}>180일</option>
+                        <option value={0}>무제한</option>
+                      </select>
+                      <span className="text-xs text-gray-400">기준일이 지나면 자동 삭제됩니다.</span>
                     </div>
                   </div>
                 </div>
-             </div>
+              </div>
+            </div>
           )}
 
           {/* Action Bar */}
           <div className="flex flex-col md:flex-row md:items-center justify-between bg-indigo-50 p-4 rounded-xl border border-indigo-100 gap-4">
             <div className="flex flex-col gap-1">
-               <div className="flex items-center gap-2 text-indigo-800 font-bold">
-                  <Save className="w-5 h-5 fill-indigo-800" />
-                  <span>로컬 DB 관리</span>
-               </div>
-               <div className="text-sm text-indigo-600">
-                 마지막 데이터: <strong>{data.length > 0 ? (data[0].bidNtceDt ? parseDbDate(data[0].bidNtceDt) : '날짜 없음') : '없음'}</strong>
-               </div>
-               <div className="text-xs text-gray-500 mt-1">
-                 '최신 공고 업데이트'는 마지막 날짜 이후 데이터만 가져옵니다.
-               </div>
+              <div className="flex items-center gap-2 text-indigo-800 font-bold">
+                <Save className="w-5 h-5 fill-indigo-800" />
+                <span>Supabase 클라우드 관리</span>
+              </div>
+              <div className="text-sm text-indigo-600">
+                클라우드 최신 공고: <strong>{data.length > 0 ? (data[0].bidNtceDt ? parseDbDate(data[0].bidNtceDt) : '날짜 없음') : '없음'}</strong>
+              </div>
+              <div className="text-xs text-gray-500 mt-1">
+                매일 새벽 4시 자동 동기화 중. 필요 시 수동으로 업데이트하세요.
+              </div>
             </div>
-            
+
             <div className="flex items-center gap-2 self-end md:self-auto">
               {/* Full Refresh Button */}
               {showSettings && (
-                  <button 
+                <button
                   onClick={handleFullReset}
                   disabled={loading}
                   className="bg-white hover:bg-red-50 text-red-600 border border-red-200 px-4 py-3 rounded-lg font-medium shadow-sm transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed text-sm whitespace-nowrap"
@@ -307,7 +357,7 @@ const App: React.FC = () => {
               )}
 
               {/* Incremental Update Button (Primary) */}
-              <button 
+              <button
                 onClick={handleUpdateLatest}
                 disabled={loading}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-bold shadow-sm transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed text-lg whitespace-nowrap"
@@ -322,43 +372,43 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
+
         <ErrorAlert message={error} debugUrl={debugUrl} />
-        
+
         {/* Success/Status Message */}
         {statusMessage && !error && (
-            <div className="mb-6 bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center gap-3 animate-fade-in">
-                <CheckCircle2 className="w-5 h-5 text-blue-600" />
-                <p className="text-sm font-medium text-blue-800">{statusMessage}</p>
-            </div>
+          <div className="mb-6 bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center gap-3 animate-fade-in">
+            <CheckCircle2 className="w-5 h-5 text-blue-600" />
+            <p className="text-sm font-medium text-blue-800">{statusMessage}</p>
+          </div>
         )}
 
         {/* Debug Info Link for Success Case (if no error but we want to see URL) */}
         {!error && debugUrl && hasSearched && (
-           <div className="mb-4 text-right">
-             <a 
-                href={debugUrl} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 hover:underline"
-              >
-                <ExternalLink className="w-3 h-3" />
-                마지막 API 요청 URL 확인 (디버그용)
-              </a>
-           </div>
+          <div className="mb-4 text-right">
+            <a
+              href={debugUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 hover:underline"
+            >
+              <ExternalLink className="w-3 h-3" />
+              마지막 API 요청 URL 확인 (디버그용)
+            </a>
+          </div>
         )}
 
         {/* Analytics Charts */}
         {hasSearched && data.length > 0 && !loading && (
           <div className="mb-8">
-             <div className="flex items-center gap-2 mb-3">
-                <BarChart3 className="w-5 h-5 text-gray-500" />
-                <h2 className="text-lg font-bold text-gray-800">데이터 분석</h2>
-             </div>
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <StatusPieChart data={data} />
-                <StatsChart data={data} />
-             </div>
+            <div className="flex items-center gap-2 mb-3">
+              <BarChart3 className="w-5 h-5 text-gray-500" />
+              <h2 className="text-lg font-bold text-gray-800">데이터 분석</h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <StatusPieChart data={data} />
+              <StatsChart data={data} />
+            </div>
           </div>
         )}
 
@@ -367,33 +417,31 @@ const App: React.FC = () => {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2">
             <div className="flex flex-col">
               <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                보관함 (Local DB)
+                보관함 (Supabase Cloud)
               </h2>
             </div>
-            
+
             {/* Target Filter Button */}
             <div className="flex items-center gap-4">
-                <button
-                    onClick={() => setFilterTarget(!filterTarget)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all border ${
-                        filterTarget 
-                        ? 'bg-red-50 text-red-600 border-red-200 ring-2 ring-red-100' 
-                        : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                    }`}
-                >
-                    {filterTarget ? <CheckCircle2 className="w-4 h-4" /> : <Filter className="w-4 h-4" />}
-                    서울 + 실내건축(4990)
-                    {targetCount > 0 && (
-                      <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
-                        filterTarget ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
-                      }`}>
-                        {targetCount}건
-                      </span>
-                    )}
-                </button>
-                <span className="text-xs text-gray-400 text-right whitespace-nowrap">
+              <button
+                onClick={() => setFilterTarget(!filterTarget)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all border ${filterTarget
+                  ? 'bg-red-50 text-red-600 border-red-200 ring-2 ring-red-100'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  }`}
+              >
+                {filterTarget ? <CheckCircle2 className="w-4 h-4" /> : <Filter className="w-4 h-4" />}
+                서울 + 실내건축(4990)
+                {targetCount > 0 && (
+                  <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${filterTarget ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
+                    }`}>
+                    {targetCount}건
+                  </span>
+                )}
+              </button>
+              <span className="text-xs text-gray-400 text-right whitespace-nowrap">
                 표시: {filteredData.length} / 전체: {data.length}
-                </span>
+              </span>
             </div>
           </div>
 
@@ -407,10 +455,10 @@ const App: React.FC = () => {
             </div>
           ) : error ? (
             <div className="text-center py-12 bg-gray-50 rounded-xl border border-gray-200">
-                <p className="text-gray-500">데이터 수집 중 오류가 발생했습니다.<br/>상단의 오류 메시지를 확인해주세요.</p>
-                {data.length > 0 && (
-                    <p className="mt-2 text-sm text-blue-600">이전 수집된 데이터({data.length}건)를 표시합니다.</p>
-                )}
+              <p className="text-gray-500">데이터 수집 중 오류가 발생했습니다.<br />상단의 오류 메시지를 확인해주세요.</p>
+              {data.length > 0 && (
+                <p className="mt-2 text-sm text-blue-600">이전 수집된 데이터({data.length}건)를 표시합니다.</p>
+              )}
             </div>
           ) : filteredData.length > 0 ? (
             <div className="grid gap-4">
@@ -420,34 +468,34 @@ const App: React.FC = () => {
             </div>
           ) : hasSearched ? (
             <div className="text-center py-24 bg-white rounded-xl border border-dashed border-gray-300">
-               <div className="bg-gray-50 rounded-full w-14 h-14 flex items-center justify-center mx-auto mb-4">
+              <div className="bg-gray-50 rounded-full w-14 h-14 flex items-center justify-center mx-auto mb-4">
                 <Database className="w-7 h-7 text-gray-400" />
               </div>
               <h3 className="text-gray-900 font-bold text-lg mb-1">
                 {filterTarget ? '조건에 맞는 공고가 없습니다' : '저장된 데이터가 없습니다'}
               </h3>
               <p className="text-gray-500 text-sm max-w-sm mx-auto mb-4">
-                {filterTarget 
-                    ? '수집된 데이터 중 서울 및 실내건축공사업(4990) 공고가 없습니다.' 
-                    : '상단의 업데이트 버튼을 눌러 데이터를 수집해주세요.'}
+                {filterTarget
+                  ? '수집된 데이터 중 서울 및 실내건축공사업(4990) 공고가 없습니다.'
+                  : '상단의 업데이트 버튼을 눌러 데이터를 수집해주세요.'}
               </p>
               {filterTarget && (
-                  <button 
-                    onClick={() => setFilterTarget(false)}
-                    className="text-blue-600 hover:underline text-sm font-medium"
-                  >
-                    필터 해제하고 전체 보기
-                  </button>
+                <button
+                  onClick={() => setFilterTarget(false)}
+                  className="text-blue-600 hover:underline text-sm font-medium"
+                >
+                  필터 해제하고 전체 보기
+                </button>
               )}
             </div>
           ) : (
             <div className="text-center py-24 bg-white rounded-xl border border-dashed border-gray-300">
-               <div className="bg-gray-50 rounded-full w-14 h-14 flex items-center justify-center mx-auto mb-4">
+              <div className="bg-gray-50 rounded-full w-14 h-14 flex items-center justify-center mx-auto mb-4">
                 <Database className="w-7 h-7 text-gray-400" />
               </div>
               <h3 className="text-gray-900 font-bold text-lg mb-1">데이터 요청 대기</h3>
               <p className="text-gray-500 text-sm max-w-sm mx-auto mb-4">
-                상단의 '최신 공고 업데이트' 버튼을 눌러주세요.<br/>
+                상단의 '최신 공고 업데이트' 버튼을 눌러주세요.<br />
                 기존 데이터를 유지하고 최신 내역만 추가합니다.
               </p>
             </div>

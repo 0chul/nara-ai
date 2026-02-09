@@ -1,0 +1,32 @@
+name: Daily Nara-AI Sync
+
+on:
+  schedule:
+    # Every day at 04:00 KST (19:00 UTC)
+    - cron: '0 19 * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Dependencies
+        run: |
+          cd nara-ai
+          npm install
+
+      - name: Run Sync Script
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          cd nara-ai
+          node scripts/sync.js
