@@ -19,14 +19,10 @@ jobs:
           node-version: 20
 
       - name: Install Dependencies
-        run: |
-          cd nara-ai
-          npm install
+        run: npm install
 
       - name: Run Sync Script
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-        run: |
-          cd nara-ai
-          node scripts/sync.js
+        run: node scripts/sync.js
