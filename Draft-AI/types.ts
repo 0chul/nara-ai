@@ -16,6 +16,26 @@ export interface BidItem {
   presmptPrce?: string;
 }
 
+// API Response structure for Nara API
+export interface ApiResponseHeader {
+  resultCode: string;
+  resultMsg: string;
+}
+
+export interface ApiResponseBody {
+  items: any;
+  numOfRows: number;
+  pageNo: number;
+  totalCount: number;
+}
+
+export interface ApiResponse {
+  response: {
+    header: ApiResponseHeader;
+    body: ApiResponseBody;
+  };
+}
+
 export interface RFPMetadata {
   fileName: string;
   uploadDate: string;

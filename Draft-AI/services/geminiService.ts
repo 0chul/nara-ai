@@ -1,5 +1,4 @@
 
-import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import { AnalysisResult, TrendInsight, CourseMatch, ProposalSlide, QualityAssessment, PastProposal, StrategyOption, StrategyEvaluation } from "../types";
 
 // Note: AI integration has been replaced with dummy data for demonstration purposes.
@@ -8,19 +7,19 @@ import { AnalysisResult, TrendInsight, CourseMatch, ProposalSlide, QualityAssess
  * Simulates analyzing an RFP document with dummy data.
  */
 export const analyzeRFP = async (
-  fileName: string, 
-  systemPrompt?: string, 
-  apiKey?: string,
-  model?: string,
-  fallbackModel?: string
+  fileName: string,
+  _systemPrompt?: string,
+  _apiKey?: string,
+  _model?: string,
+  _fallbackModel?: string
 ): Promise<AnalysisResult> => {
   // Simulate AI processing delay
   await new Promise(resolve => setTimeout(resolve, 2000));
-  
+
   // Logic based on filename for demo purposes
   const isTech = fileName.includes("AI") || fileName.includes("데이터") || fileName.includes("DT");
   const isBank = fileName.includes("금융") || fileName.includes("은행");
-  
+
   return {
     clientName: isBank ? "한국미래은행" : (isTech ? "테크솔루션즈" : "대한제조(주)"),
     industry: isBank ? "금융/은행" : (isTech ? "IT/소프트웨어" : "제조/화학"),
@@ -47,11 +46,11 @@ export const analyzeRFP = async (
  * Generates Trend Insights based on the analyzed modules using dummy data.
  */
 export const fetchTrendInsights = async (
-  modules: string[], 
-  systemPrompt?: string, 
-  apiKey?: string,
-  model?: string,
-  fallbackModel?: string
+  _modules: string[],
+  _systemPrompt?: string,
+  _apiKey?: string,
+  _model?: string,
+  _fallbackModel?: string
 ): Promise<TrendInsight[]> => {
   // Simulate AI processing delay
   await new Promise(resolve => setTimeout(resolve, 1500));
@@ -67,10 +66,10 @@ export const fetchTrendInsights = async (
  * Generates 3 Strategic Options based on Analysis and Trends
  */
 export const generateStrategyOptions = async (
-  analysis: AnalysisResult,
-  trends: TrendInsight[],
-  systemPrompt?: string,
-  apiKey?: string
+  _analysis: AnalysisResult,
+  _trends: TrendInsight[],
+  _systemPrompt?: string,
+  _apiKey?: string
 ): Promise<StrategyOption[]> => {
   await new Promise(resolve => setTimeout(resolve, 2000));
 
@@ -103,9 +102,9 @@ export const generateStrategyOptions = async (
  * Evaluates the generated strategies (QA Agent)
  */
 export const evaluateStrategies = async (
-  strategies: StrategyOption[],
-  systemPrompt?: string,
-  apiKey?: string
+  _strategies: StrategyOption[],
+  _systemPrompt?: string,
+  _apiKey?: string
 ): Promise<StrategyEvaluation[]> => {
   await new Promise(resolve => setTimeout(resolve, 1500));
 
@@ -139,13 +138,13 @@ export const evaluateStrategies = async (
  * Now takes a StrategyOption to tailor the matching.
  */
 export const matchCurriculum = async (
-  modules: string[], 
+  modules: string[],
   trends: TrendInsight[],
   selectedStrategy: StrategyOption | null,
-  systemPrompt?: string, 
-  apiKey?: string,
-  model?: string,
-  fallbackModel?: string
+  _systemPrompt?: string,
+  _apiKey?: string,
+  _model?: string,
+  _fallbackModel?: string
 ): Promise<CourseMatch[]> => {
   // Simulate AI processing delay
   await new Promise(resolve => setTimeout(resolve, 1800));
@@ -157,7 +156,7 @@ export const matchCurriculum = async (
     moduleName: mod,
     courseTitle: `${strategyPrefix}Expert ${mod} 마스터 클래스`,
     instructor: idx % 2 === 0 ? "김철수 수석" : "이영희 이사",
-    matchReason: selectedStrategy 
+    matchReason: selectedStrategy
       ? `선택하신 '${selectedStrategy.title}' 전략에 맞춰 ${selectedStrategy.focusArea} 요소를 30% 강화하여 설계했습니다.`
       : `트렌드 분석 결과(${trends[0]?.topic || '최신 동향'})를 반영하여 해당 모듈을 선정했습니다.`,
     matchScore: 90 + Math.floor(Math.random() * 10),
@@ -168,42 +167,42 @@ export const matchCurriculum = async (
 /**
  * Generates slide content text based on structured data.
  */
-export const generateProposalContent = async (analysis: AnalysisResult, trends: TrendInsight[], matches: CourseMatch[], apiKey?: string): Promise<ProposalSlide[]> => {
-    // Simulating slide generation logic - this is mostly deterministic templating
-    
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    const slides: ProposalSlide[] = [
-      { id: 1, title: analysis.programName, content: `제안서\n\n${analysis.clientName} 귀중\n성공적인 리더 육성을 위한 제안`, type: "cover" },
-      { id: 2, title: "제안 배경 및 목적", content: `본 과정은 ${analysis.clientName} ${analysis.department}의 ${analysis.targetAudience}을 대상으로 합니다.\n주요 목표:\n${analysis.objectives.map(o => "- " + o).join("\n")}`, type: "overview" },
-      { id: 3, title: "최신 트렌드 인사이트", content: trends.map(t => `[${t.topic}] ${t.insight} (출처: ${t.source})`).join("\n\n"), type: "trend" },
-    ];
+export const generateProposalContent = async (analysis: AnalysisResult, trends: TrendInsight[], matches: CourseMatch[], _apiKey?: string): Promise<ProposalSlide[]> => {
+  // Simulating slide generation logic - this is mostly deterministic templating
 
-    matches.forEach((match, idx) => {
-        slides.push({
-            id: 4 + idx,
-            title: `Module ${idx + 1}: ${match.courseTitle}`,
-            content: `강사: ${match.instructor}\n\n매칭 포인트:\n${match.matchReason}\n\n이 모듈은 고객사의 요청인 '${match.moduleName}'을 완벽하게 커버합니다.`,
-            type: "curriculum"
-        });
+  await new Promise(resolve => setTimeout(resolve, 1000));
+
+  const slides: ProposalSlide[] = [
+    { id: 1, title: analysis.programName, content: `제안서\n\n${analysis.clientName} 귀중\n성공적인 리더 육성을 위한 제안`, type: "cover" },
+    { id: 2, title: "제안 배경 및 목적", content: `본 과정은 ${analysis.clientName} ${analysis.department}의 ${analysis.targetAudience}을 대상으로 합니다.\n주요 목표:\n${analysis.objectives.map(o => "- " + o).join("\n")}`, type: "overview" },
+    { id: 3, title: "최신 트렌드 인사이트", content: trends.map(t => `[${t.topic}] ${t.insight} (출처: ${t.source})`).join("\n\n"), type: "trend" },
+  ];
+
+  matches.forEach((match, idx) => {
+    slides.push({
+      id: 4 + idx,
+      title: `Module ${idx + 1}: ${match.courseTitle}`,
+      content: `강사: ${match.instructor}\n\n매칭 포인트:\n${match.matchReason}\n\n이 모듈은 고객사의 요청인 '${match.moduleName}'을 완벽하게 커버합니다.`,
+      type: "curriculum"
     });
+  });
 
-    slides.push({ id: 99, title: "추진 일정 및 장소", content: `${analysis.schedule} 진행 예정\n장소: ${analysis.location}\n\n사전 진단 -> 본 교육 -> 사후 팔로우업`, type: "schedule" });
-    slides.push({ id: 100, title: "감사합니다", content: "엑스퍼트컨설팅\n문의: 02-1234-5678", type: "closing" });
+  slides.push({ id: 99, title: "추진 일정 및 장소", content: `${analysis.schedule} 진행 예정\n장소: ${analysis.location}\n\n사전 진단 -> 본 교육 -> 사후 팔로우업`, type: "schedule" });
+  slides.push({ id: 100, title: "감사합니다", content: "엑스퍼트컨설팅\n문의: 02-1234-5678", type: "closing" });
 
-    return slides;
+  return slides;
 };
 
 /**
  * Evaluates the proposal quality based on requirements and content using dummy data.
  */
 export const evaluateProposalQuality = async (
-  analysis: AnalysisResult, 
-  matches: CourseMatch[], 
-  systemPrompt?: string,
-  apiKey?: string,
-  model?: string,
-  fallbackModel?: string
+  _analysis: AnalysisResult,
+  _matches: CourseMatch[],
+  _systemPrompt?: string,
+  _apiKey?: string,
+  _model?: string,
+  _fallbackModel?: string
 ): Promise<QualityAssessment> => {
   // Simulate AI processing delay
   await new Promise(resolve => setTimeout(resolve, 2000));
@@ -226,14 +225,14 @@ export const evaluateProposalQuality = async (
  */
 export const evaluatePastProposal = async (
   proposal: PastProposal,
-  systemPrompt?: string,
-  apiKey?: string,
-  model?: string,
-  fallbackModel?: string
+  _systemPrompt?: string,
+  _apiKey?: string,
+  _model?: string,
+  _fallbackModel?: string
 ): Promise<QualityAssessment> => {
   // Simulate AI processing delay
   await new Promise(resolve => setTimeout(resolve, 1500));
-  
+
   return {
     complianceScore: 85 + Math.floor(Math.random() * 10),
     complianceReason: "과거 제안 이력을 분석한 결과, 고객사 요구사항을 충실히 반영한 것으로 추정됩니다.",
