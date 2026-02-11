@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local Draft-AI project
+Draft-AI/node_modules
+Draft-AI/dist
+Draft-AI/.env
+
