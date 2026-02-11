@@ -90,7 +90,7 @@ export const cleanupOldBids = async (days: number) => {
 
     console.log(`[Supabase] Cleaning up bids older than ${cutoffStr} (${days} days)`);
 
-    const { error, count } = await supabase
+    const { error } = await supabase
       .from('bids')
       .delete()
       .lt('bidNtceDt', cutoffStr);
