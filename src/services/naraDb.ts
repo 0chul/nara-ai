@@ -117,3 +117,20 @@ export const cleanupOldBids = async (days: number) => {
     console.error("[Supabase] Failed to cleanup old bids:", error);
   }
 };
+
+// Helper to test DB connection
+export const testDbConnection = async (): Promise<{ success: boolean, message: string }> => {
+  try {
+    const { count, error } = await supabase
+      .from('bids')
+      .select('*', { count: 'exact', head: true });
+
+    if (error) {
+      return { success: false, message: `DB 오류: ${error.message} (코드: ${error.code})` };
+    }
+
+    return { success: true, message: `연결 성공! (현재 DB에 ${count || 0}건의 공고가 저장되어 있습니다.)` };
+  } catch (error: any) {
+    return { success: false, message: `시스템 오류: ${error.message}` };
+  }
+};

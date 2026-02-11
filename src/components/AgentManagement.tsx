@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { AgentConfig } from '../types';
 import { Save, Bot, Shield, Terminal, Cpu, Settings, Key, Eye, EyeOff, Globe, AlertTriangle, CheckCircle2, Database, Activity, RefreshCw } from 'lucide-react';
 import { testApiConnection } from '../services/naraApi';
+import { testDbConnection } from '../services/naraDb';
 
 interface Props {
     agents: AgentConfig[];
@@ -79,6 +80,22 @@ export const AgentManagement: React.FC<Props> = ({
         }
     };
 
+    const handleTestDbConnection = async () => {
+        setTestLoading(true);
+        try {
+            const result = await testDbConnection();
+            if (result.success) {
+                alert(`테스트 결과: 성공!\n\n${result.message}`);
+            } else {
+                alert(`테스트 결과: 실패\n\n상세내용: ${result.message}\n\n[도움말].env 파일의 수파베이스 설정(URL, API Key)을 확인해 주세요.`);
+            }
+        } catch (error: any) {
+            alert(`DB 테스트 에러: ${error.message}`);
+        } finally {
+            setTestLoading(false);
+        }
+    };
+
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fade-in-up h-[calc(100vh-100px)] flex flex-col">
             <div className="flex justify-between items-center mb-6 flex-shrink-0">
@@ -117,7 +134,7 @@ export const AgentManagement: React.FC<Props> = ({
                         <button
                             onClick={() => setSelectedId('global')}
                             className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors
-                        ${selectedId === 'global' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'text-slate-600 hover:bg-slate-50 border border-transparent'}`}
+                        ${selectedId === 'global' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'text-slate-600 hover:bg-slate-50 border border-transparent'} `}
                         >
                             <Globe size={18} />
                             <div>
@@ -134,7 +151,7 @@ export const AgentManagement: React.FC<Props> = ({
                                 key={agent.id}
                                 onClick={() => setSelectedId(agent.id)}
                                 className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors
-                            ${selectedId === agent.id ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'text-slate-600 hover:bg-slate-50 border border-transparent'}`}
+                            ${selectedId === agent.id ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'text-slate-600 hover:bg-slate-50 border border-transparent'} `}
                             >
                                 <Bot size={18} />
                                 <div>
@@ -247,6 +264,15 @@ export const AgentManagement: React.FC<Props> = ({
                                                 >
                                                     {testLoading ? <RefreshCw size={20} className="animate-spin" /> : <Activity size={20} className="group-hover:animate-pulse" />}
                                                     나라장터 연결 테스트하기
+                                                </button>
+
+                                                <button
+                                                    onClick={handleTestDbConnection}
+                                                    disabled={testLoading}
+                                                    className="w-full mt-2 py-3 bg-white border-2 border-slate-100 text-slate-600 rounded-xl hover:bg-slate-50 transition-all font-bold flex items-center justify-center gap-2 group disabled:opacity-50"
+                                                >
+                                                    {testLoading ? <RefreshCw size={20} className="animate-spin" /> : <Database size={20} className="group-hover:scale-110 transition-transform" />}
+                                                    DB 연동 테스트하기
                                                 </button>
 
                                                 {localNaraKey.includes('%') && localShouldEncode && (

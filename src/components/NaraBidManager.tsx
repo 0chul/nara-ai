@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BidItem } from '../types';
-import { getAllBids, toggleBidPin, saveBids } from '../services/naraDb';
+import { getAllBids, toggleBidPin, saveBids, testDbConnection } from '../services/naraDb';
 import { fetchBidNotices } from '../services/naraApi';
 import { Search, RefreshCw, Calendar, Building2, MapPin, ExternalLink, CheckCircle2, Pin, PinOff, Inbox } from 'lucide-react';
 
@@ -81,8 +81,9 @@ export const NaraBidManager: React.FC<NaraBidManagerProps> = ({ onSelectBid, api
                 setBids(filtered);
                 setScannedCount(result.scannedCount);
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Failed to fetch bids:', error);
+            alert(`데이터 처리 중 오류가 발생했습니다.\n\n[오류 내용] ${error.message}\n\n도움말: Supabase DB 연결 문제일 수 있습니다. '에이전트 설정'에서 'DB 연결 테스트'를 진행해 보세요.`);
         } finally {
             setLoading(false);
         }
