@@ -45,9 +45,12 @@ async function sync() {
 
             if (rawItems.length === 0) break;
 
-            // Normalize & Filter (Seoul Only)
+            // Normalize & Filter (Nationwide + Education Keywords)
+            const keywords = ['교육', '강의', '컨설팅', 'HRD', '위탁', '연수', '워크숍', '세미나'];
+
             const filtered = rawItems.filter(raw => {
-                return (raw.prtcptPsblRgnNm || "").includes("서울");
+                const title = raw.bidNtceNm || "";
+                return keywords.some(keyword => title.includes(keyword));
             }).map(raw => ({
                 bidNtceNo: raw.bidNtceNo,
                 bidNtceOrd: raw.bidNtceOrd,

@@ -37,7 +37,7 @@ const App: React.FC = () => {
   const [shouldEncodeKey, setShouldEncodeKey] = useState(true);
 
   const [showSettings, setShowSettings] = useState(false);
-  const [filterTarget, setFilterTarget] = useState(false); // Filter for Seoul & Interior
+  const [filterTarget, setFilterTarget] = useState(false); // Filter for Education Keywords
 
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -45,7 +45,7 @@ const App: React.FC = () => {
   const [debugUrl, setDebugUrl] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [retentionDays, setRetentionDays] = useState(60); // Default 60 days
-  const [saveOnlyFiltered, setSaveOnlyFiltered] = useState(true); // Default to saving only target bids
+  const [saveOnlyFiltered, setSaveOnlyFiltered] = useState(true); // Default to saving only education bids
 
   const [data, setData] = useState<BidItem[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -211,7 +211,8 @@ const App: React.FC = () => {
 
   // Helper to check conditions
   const isTargetBid = (item: BidItem) => {
-    return item.prtcptPsblRgnNm?.includes("서울");
+    const keywords = ['교육', '강의', '컨설팅', 'HRD', '위탁', '연수', '워크숍', '세미나', '진로', '취업', '캠프'];
+    return keywords.some(keyword => (item.bidNtceNm || "").includes(keyword));
   };
 
   const displayedData = filterTarget ? data.filter(isTargetBid) : data;
@@ -238,7 +239,7 @@ const App: React.FC = () => {
                 <Search className="w-5 h-5" />
               </div>
               <h1 className="text-xl font-bold text-gray-900 tracking-tight">
-                나라장터 <span className="text-blue-600">입찰 검색</span>
+                엑스퍼트컨설팅 <span className="text-blue-600">교육 입찰 검색</span>
                 <span className="ml-2 text-sm font-normal text-gray-500 hidden sm:inline-block">
                   (Supabase Cloud Sync)
                 </span>
@@ -328,7 +329,7 @@ const App: React.FC = () => {
                         className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                       />
                       <label htmlFor="saveFilterToggle" className="text-xs text-gray-700 font-medium">
-                        <strong>조건에 맞는 공고만 저장</strong> (서울 지역 데이터만 수집하여 용량 절약)
+                        <strong>교육 관련 공고만 저장</strong> (교육 키워드 포함 데이터만 수집)
                       </label>
                     </div>
 
@@ -468,7 +469,7 @@ const App: React.FC = () => {
                   }`}
               >
                 {filterTarget ? <CheckCircle2 className="w-4 h-4" /> : <Filter className="w-4 h-4" />}
-                서울 지역 공고만 보기
+                교육 관련 공고만 보기
                 {targetCount > 0 && (
                   <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${filterTarget ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
                     }`}>
@@ -527,8 +528,8 @@ const App: React.FC = () => {
                             key={page}
                             onClick={() => handlePageChange(page)}
                             className={`w-10 h-10 rounded-lg text-sm font-bold transition-all ${currentPage === page
-                                ? 'bg-indigo-600 text-white shadow-md'
-                                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                              ? 'bg-indigo-600 text-white shadow-md'
+                              : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
                               }`}
                           >
                             {page}
@@ -561,7 +562,7 @@ const App: React.FC = () => {
               </h3>
               <p className="text-gray-500 text-sm max-w-sm mx-auto mb-4">
                 {filterTarget
-                  ? '수집된 데이터 중 서울 지역 공고가 없습니다.'
+                  ? '수집된 데이터 중 교육 관련 공고가 없습니다.'
                   : '상단의 업데이트 버튼을 눌러 데이터를 수집해주세요.'}
               </p>
               {filterTarget && (
