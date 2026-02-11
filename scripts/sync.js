@@ -1,6 +1,8 @@
-const { createClient } = require('@supabase/supabase-js');
-const fetch = require('node-fetch');
-require('dotenv').config();
+import { createClient } from '@supabase/supabase-js';
+import fetch from 'node-fetch';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 // Configuration
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
