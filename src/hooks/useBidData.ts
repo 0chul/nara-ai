@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { fetchBidNotices } from '../services/api';
-import { saveBids, getAllBids, clearBids, getLatestBid, cleanupOldBids } from '../services/db';
+import { fetchBidNotices } from '../services/naraApi';
+import { saveBids, getAllBids, clearBids, getLatestBid, cleanupOldBids } from '../services/naraDb';
 import { BidItem } from '../types';
 
 interface UseBidDataProps {

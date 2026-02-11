@@ -27,12 +27,13 @@ export const saveBids = async (items: BidItem[]) => {
   }
 };
 
-// Helper to get all items sorted by date descending
+// Helper to get all items sorted by pinned first, then date descending
 export const getAllBids = async (): Promise<BidItem[]> => {
   try {
     const { data, error } = await supabase
       .from('bids')
       .select('*')
+      .order('isPinned', { ascending: false })
       .order('bidNtceDt', { ascending: false });
 
     if (error) throw error;
@@ -40,6 +41,21 @@ export const getAllBids = async (): Promise<BidItem[]> => {
   } catch (error) {
     console.error("[Supabase] Failed to retrieve bids:", error);
     return [];
+  }
+};
+
+// Helper to toggle pin status
+export const toggleBidPin = async (bidNo: string, bidOrd: string, isPinned: boolean) => {
+  try {
+    const { error } = await supabase
+      .from('bids')
+      .update({ isPinned })
+      .match({ bidNtceNo: bidNo, bidNtceOrd: bidOrd });
+
+    if (error) throw error;
+  } catch (error) {
+    console.error("[Supabase] Failed to toggle pin:", error);
+    throw error;
   }
 };
 

@@ -120,8 +120,9 @@ export const fetchBidNotices = async (
   startDate: string,
   endDate: string,
   apiKey: string,
-  shouldEncodeKey: boolean = true
-): Promise<{ items: BidItem[], totalCount: number, scannedCount: number, error?: string, debugUrl?: string }> => {
+  shouldEncodeKey: boolean = true,
+  userKeyword: string = ''
+): Promise<{ items: BidItem[], allItems: BidItem[], totalCount: number, scannedCount: number, error?: string, debugUrl?: string }> => {
 
   try {
     const trimmedKey = apiKey.trim();
@@ -133,10 +134,11 @@ export const fetchBidNotices = async (
     if (firstPage.error) {
       return {
         items: [],
+        allItems: [],
         totalCount: 0,
         scannedCount: 0,
         error: firstPage.error,
-        debugUrl: debugUrl || `${BASE_URL}?serviceKey=${serviceKey}...`
+        debugUrl: debugUrl || `${BASE_URL}?serviceKey=${serviceKey.substring(0, 10)}...`
       };
     }
 
@@ -160,23 +162,84 @@ export const fetchBidNotices = async (
       });
     }
 
-    // Filter by Keywords (Nationwide + Education)
-    // Removed '위탁' as it captures too many irrelevant items (e.g. cleaning, waste disposal)
-    const keywords = ['교육', '강의', '컨설팅', 'HRD', '연수', '워크숍', '세미나', '진로', '취업', '캠프'];
+    // Filter logic: If user provided a keyword, use it. Otherwise, use our defaults.
+    const educationKeywords = ['교육', '강의', '컨설팅', 'HRD', '연수', '워크숍', '세미나', '진로', '취업', '캠프'];
 
-    const filteredItems = allItems.filter(item => {
+    // If user specified a keyword, we filter by that. 
+    // If no keyword, we fallback to education filter to keep results relevant for this app's main purpose.
+    const finalFilteredItems = allItems.filter(item => {
       const title = item.bidNtceNm || "";
-      return keywords.some(keyword => title.includes(keyword));
+      if (userKeyword) {
+        return title.includes(userKeyword);
+      }
+      return educationKeywords.some(keyword => title.includes(keyword));
     });
 
     return {
-      items: filteredItems,
-      totalCount: filteredItems.length, // Update count to reflect filtered items
+      items: finalFilteredItems,
+      allItems: allItems,
+      totalCount: finalFilteredItems.length,
       scannedCount: allItems.length,
       debugUrl: debugUrl
     };
 
   } catch (err: any) {
-    return { items: [], totalCount: 0, scannedCount: 0, error: err.message };
+    return { items: [], allItems: [], totalCount: 0, scannedCount: 0, error: err.message };
+  }
+};
+
+export const testApiConnection = async (apiKey: string, shouldEncodeKey: boolean): Promise<{ success: boolean, message: string, data?: any }> => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const lastMonth = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    // Test with a simple query: 1 row, last 30 days
+    const trimmedKey = apiKey.trim();
+    const serviceKey = shouldEncodeKey ? encodeURIComponent(trimmedKey) : trimmedKey;
+
+    const queryParams = [
+      `serviceKey=${serviceKey}`,
+      `pageNo=1`,
+      `numOfRows=1`,
+      `type=json`,
+      `bidNtceBgnDt=${formatDateForApi(lastMonth)}`,
+      `bidNtceEndDt=${formatDateForApi(today, true)}`
+    ].join('&');
+
+    const fetchUrl = `${BASE_URL}?${queryParams}`;
+    const response = await fetch(fetchUrl);
+    const text = await response.text();
+
+    if (text.trim().startsWith('<')) {
+      const msgMatch = text.match(/<errMsg>(.*?)<\/errMsg>/) || text.match(/<returnAuthMsg>(.*?)<\/returnAuthMsg>/);
+      if (msgMatch) return { success: false, message: `API 에러 (XML): ${msgMatch[1]}` };
+      return { success: false, message: 'API가 JSON이 아닌 XML을 반환했습니다. (키 인증 실패 가능성 높음)' };
+    }
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      return { success: false, message: '응답 데이터 파싱 실패 (JSON 형식 아님)' };
+    }
+
+    const resultCode = data.response?.header?.resultCode;
+    const resultMsg = data.response?.header?.resultMsg;
+
+    if (resultCode === "00") {
+      const totalCount = data.response?.body?.totalCount || 0;
+      const firstItem = data.response?.body?.items?.[0] || data.response?.body?.items?.item?.[0];
+      const sampleTitle = firstItem ? (firstItem.bidNtceNm || '항목명 없음') : '데이터 없음';
+
+      return {
+        success: true,
+        message: `연결 성공! (총 ${totalCount}건 검색됨, 첫번째 항목: ${sampleTitle})`,
+        data: data
+      };
+    } else {
+      return { success: false, message: `API 에러 코드: ${resultCode} (${resultMsg})` };
+    }
+  } catch (error: any) {
+    return { success: false, message: `네트워크/시스템 에러: ${error.message}` };
   }
 };

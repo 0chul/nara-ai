@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Upload, FileText, File as FileIcon, X, Plus, Play, Database } from 'lucide-react';
-import { RFPMetadata } from '../types';
+import { Upload, FileText, File as FileIcon, X, Plus, Play, Database, Pin, ArrowRight } from 'lucide-react';
+import { RFPMetadata, BidItem } from '../types';
+import { getAllBids } from '../services/naraDb';
 
 interface FileUploaderProps {
   onUploadComplete: (files: RFPMetadata[]) => void;
@@ -10,6 +11,16 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onUploadComplete }) 
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<RFPMetadata[]>([]);
+  const [pinnedBids, setPinnedBids] = useState<BidItem[]>([]);
+
+  // Load pinned bids from DB
+  React.useEffect(() => {
+    const loadPinned = async () => {
+      const bids = await getAllBids();
+      setPinnedBids(bids.filter(b => b.isPinned));
+    };
+    loadPinned();
+  }, []);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -31,7 +42,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onUploadComplete }) 
         uploadDate: new Date().toLocaleDateString()
       }));
 
-      setUploadedFiles(prev => [...prev, ...newMetadataList]);
+      setUploadedFiles((prev: RFPMetadata[]) => [...prev, ...newMetadataList]);
       setIsUploading(false);
     }, 800);
   };
@@ -56,7 +67,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onUploadComplete }) 
   };
 
   const removeFile = (indexToRemove: number) => {
-    setUploadedFiles(prev => prev.filter((_, index) => index !== indexToRemove));
+    setUploadedFiles((prev: RFPMetadata[]) => prev.filter((_, index) => index !== indexToRemove));
   };
 
   const handleConfirm = () => {
@@ -65,12 +76,54 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onUploadComplete }) 
     }
   };
 
+  const startFromBid = (bid: BidItem) => {
+    // This is handled by a separate event, but to make it work from here, 
+    // we can simulate the bid selection logic or just trigger the app-level handler
+    // Since App.tsx handles onSelectBid via NaraBidBrowser, we should probably 
+    // expose a way to trigger that or just manually call onUploadComplete with bid data.
+
+    // For simplicity, let's just trigger the global event or provide the data.
+    // In our case, handleBidSelection in App.tsx is the logic we want.
+    // Let's use a CustomEvent to pass the bid back to App.tsx
+    window.dispatchEvent(new CustomEvent('select-pinned-bid', { detail: bid }));
+  };
+
   return (
     <div className="w-full max-w-4xl mx-auto space-y-8">
       <div className="text-center mb-6">
         <h2 className="text-2xl font-bold text-slate-800">RFP 소스 선택</h2>
         <p className="text-slate-500 mt-2">파일을 업로드하거나 나라장터 입찰 공고에서 가져오세요.</p>
       </div>
+
+      {/* Pinned Bids Recommendation */}
+      {pinnedBids.length > 0 && (
+        <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-6 mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <Pin size={18} className="text-blue-600 fill-blue-600" />
+            <h3 className="font-bold text-blue-900">핀업된 관심 공고</h3>
+            <span className="text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full font-bold">Quick Start</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {pinnedBids.map(bid => (
+              <div
+                key={`${bid.bidNtceNo}-${bid.bidNtceOrd}`}
+                onClick={() => startFromBid(bid)}
+                className="bg-white border border-blue-200 p-4 rounded-xl flex items-center justify-between group cursor-pointer hover:shadow-md hover:border-blue-400 transition-all"
+              >
+                <div className="min-w-0 pr-4">
+                  <p className="text-sm font-bold text-slate-800 truncate mb-1">{bid.bidNtceNm}</p>
+                  <p className="text-xs text-slate-500 truncate">{bid.ntceInsttNm} • D-{
+                    Math.ceil((new Date(bid.bidNtceEndDt.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3')).getTime() - new Date().getTime()) / (1000 * 3600 * 24))
+                  }일 남음</p>
+                </div>
+                <div className="bg-blue-50 text-blue-600 p-2 rounded-lg group-hover:bg-blue-600 group-hover:text-white transition-all">
+                  <ArrowRight size={16} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Source Selection Buttons */}
       <div className="flex justify-center gap-4 mb-6">
