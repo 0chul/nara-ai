@@ -211,7 +211,8 @@ const App: React.FC = () => {
 
   // Helper to check conditions
   const isTargetBid = (item: BidItem) => {
-    const keywords = ['교육', '강의', '컨설팅', 'HRD', '위탁', '연수', '워크숍', '세미나', '진로', '취업', '캠프'];
+    // Removed '위탁' to reduce noise
+    const keywords = ['교육', '강의', '컨설팅', 'HRD', '연수', '워크숍', '세미나', '진로', '취업', '캠프'];
     return keywords.some(keyword => (item.bidNtceNm || "").includes(keyword));
   };
 

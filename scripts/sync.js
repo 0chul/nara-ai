@@ -46,7 +46,8 @@ async function sync() {
             if (rawItems.length === 0) break;
 
             // Normalize & Filter (Nationwide + Education Keywords)
-            const keywords = ['교육', '강의', '컨설팅', 'HRD', '위탁', '연수', '워크숍', '세미나'];
+            // Removed '위탁' to reduce noise
+            const keywords = ['교육', '강의', '컨설팅', 'HRD', '연수', '워크숍', '세미나', '진로', '취업', '캠프'];
 
             const filtered = rawItems.filter(raw => {
                 const title = raw.bidNtceNm || "";

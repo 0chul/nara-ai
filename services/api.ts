@@ -160,9 +160,18 @@ export const fetchBidNotices = async (
       });
     }
 
+    // Filter by Keywords (Nationwide + Education)
+    // Removed '위탁' as it captures too many irrelevant items (e.g. cleaning, waste disposal)
+    const keywords = ['교육', '강의', '컨설팅', 'HRD', '연수', '워크숍', '세미나', '진로', '취업', '캠프'];
+
+    const filteredItems = allItems.filter(item => {
+      const title = item.bidNtceNm || "";
+      return keywords.some(keyword => title.includes(keyword));
+    });
+
     return {
-      items: allItems,
-      totalCount: totalCount,
+      items: filteredItems,
+      totalCount: filteredItems.length, // Update count to reflect filtered items
       scannedCount: allItems.length,
       debugUrl: debugUrl
     };
