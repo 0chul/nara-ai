@@ -30,17 +30,29 @@ export const saveBids = async (items: BidItem[]) => {
 // Helper to get all items sorted by pinned first, then date descending
 export const getAllBids = async (): Promise<BidItem[]> => {
   try {
+    // Try sorting first
     const { data, error } = await supabase
       .from('bids')
       .select('*')
       .order('isPinned', { ascending: false })
       .order('bidNtceDt', { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      console.warn("[Supabase] Sorted fetch failed, trying unfiltered...", error);
+      // Fallback: No sorting (to handle cases where columns might be missing or renamed)
+      const { data: rawData, error: rawError } = await supabase
+        .from('bids')
+        .select('*')
+        .limit(100);
+
+      if (rawError) throw rawError;
+      return rawData || [];
+    }
+
     return data || [];
   } catch (error) {
     console.error("[Supabase] Failed to retrieve bids:", error);
-    return [];
+    throw error; // Let the caller handle the UI alert
   }
 };
 

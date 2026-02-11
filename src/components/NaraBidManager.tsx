@@ -34,9 +34,15 @@ export const NaraBidManager: React.FC<NaraBidManagerProps> = ({ onSelectBid, api
 
     const loadBidsFromDb = async () => {
         setLoading(true);
-        const savedBids = await getAllBids();
-        setBids(savedBids);
-        setLoading(false);
+        try {
+            const savedBids = await getAllBids();
+            setBids(savedBids);
+        } catch (error: any) {
+            console.error('Failed to load bids from DB:', error);
+            alert(`DB 데이터를 불러오는 데 실패했습니다: ${error.message}`);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleSearch = async () => {
