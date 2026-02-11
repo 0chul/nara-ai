@@ -14,7 +14,7 @@ interface NaraBidBrowserProps {
 export const NaraBidBrowser: React.FC<NaraBidBrowserProps> = ({ onSelectBid, onClose, apiKey, shouldEncodeKey }) => {
     const [bids, setBids] = useState<BidItem[]>([]);
     const [loading, setLoading] = useState(false);
-    const [searchKeyword, setSearchKeyword] = useState('교육');
+    const [searchKeyword, setSearchKeyword] = useState('');
     const [selectedBid, setSelectedBid] = useState<BidItem | null>(null);
 
     // Period state (Default last 30 days)
@@ -39,9 +39,6 @@ export const NaraBidBrowser: React.FC<NaraBidBrowserProps> = ({ onSelectBid, onC
         setLoading(true);
         try {
             // Fetch from API (last 30 days)
-            const today = new Date().toISOString().split('T')[0];
-            const lastMonth = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-
             if (!apiKey) {
                 alert('나라장터 서비스 키가 설정되지 않았습니다. [에이전트 설정]에서 키를 입력해주세요.');
                 setLoading(false);
@@ -127,7 +124,7 @@ export const NaraBidBrowser: React.FC<NaraBidBrowserProps> = ({ onSelectBid, onC
                                     value={searchKeyword}
                                     onChange={(e) => setSearchKeyword(e.target.value)}
                                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                                    placeholder="검색어 입력 (빈칸 시 기본 필터링)"
+                                    placeholder="검색어 입력 (빈칸 시 모든 공고 조회)"
                                     className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                                 />
                             </div>

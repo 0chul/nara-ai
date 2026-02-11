@@ -15,7 +15,7 @@ interface NaraBidManagerProps {
 export const NaraBidManager: React.FC<NaraBidManagerProps> = ({ onSelectBid, apiKey, shouldEncodeKey, onRefreshPinned }) => {
     const [bids, setBids] = useState<BidItem[]>([]);
     const [loading, setLoading] = useState(false);
-    const [searchKeyword, setSearchKeyword] = useState('교육');
+    const [searchKeyword, setSearchKeyword] = useState('');
     const [selectedBid, setSelectedBid] = useState<BidItem | null>(null);
     const [scannedCount, setScannedCount] = useState<number | null>(null);
 
@@ -170,7 +170,7 @@ export const NaraBidManager: React.FC<NaraBidManagerProps> = ({ onSelectBid, api
                             value={searchKeyword}
                             onChange={(e) => setSearchKeyword(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                            placeholder="검색어 또는 빈칸 입력 (빈칸 시 교육/HRD 중심 조회)"
+                            placeholder="검색어 입력 (빈칸 시 모든 공고 조회)"
                             className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
                         />
                     </div>
@@ -191,7 +191,7 @@ export const NaraBidManager: React.FC<NaraBidManagerProps> = ({ onSelectBid, api
                     </button>
                 </div>
                 <div className="flex items-center justify-between text-xs text-slate-500">
-                    <p>💡 팁: 검색어를 입력하지 않으면 '교육, HRD, 컨설팅' 등 관련 분야 공고를 자동으로 필터링합니다.</p>
+                    <p>💡 팁: 검색어를 입력하지 않으면 해당 기간의 모든 입찰 공고를 조회합니다.</p>
                     {scannedCount !== null && (
                         <div className="flex items-center gap-2">
                             <div className="h-2 w-2 rounded-full bg-green-500"></div>
@@ -323,7 +323,7 @@ export const NaraBidManager: React.FC<NaraBidManagerProps> = ({ onSelectBid, api
                     </div>
                     <h3 className="text-xl font-bold text-slate-900 mb-2">조회된 공고가 없습니다</h3>
                     <p className="text-slate-500 max-w-sm mb-8">
-                        교육 및 컨설팅 키워드로 검색하거나, '공고 조회' 버튼을 눌러 나라장터의 최신 데이터를 가져오세요.
+                        검색어를 입력하거나, '공고 조회' 버튼을 눌러 나라장터의 최신 데이터를 가져오세요.
                     </p>
                     <button
                         onClick={handleSearch}

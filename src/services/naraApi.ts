@@ -162,17 +162,14 @@ export const fetchBidNotices = async (
       });
     }
 
-    // Filter logic: If user provided a keyword, use it. Otherwise, use our defaults.
-    const educationKeywords = ['교육', '강의', '컨설팅', 'HRD', '연수', '워크숍', '세미나', '진로', '취업', '캠프'];
-
-    // If user specified a keyword, we filter by that. 
-    // If no keyword, we fallback to education filter to keep results relevant for this app's main purpose.
+    // Filter logic: If user provided a keyword, use it. 
+    // If no keyword, we return ALL items (Nara-AI original behavior) to ensure visibility.
     const finalFilteredItems = allItems.filter(item => {
       const title = item.bidNtceNm || "";
       if (userKeyword) {
         return title.includes(userKeyword);
       }
-      return educationKeywords.some(keyword => title.includes(keyword));
+      return true; // No keyword = No filter
     });
 
     return {
