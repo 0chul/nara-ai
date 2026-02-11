@@ -37,7 +37,7 @@ const App: React.FC = () => {
   const [shouldEncodeKey, setShouldEncodeKey] = useState(true);
 
   const [showSettings, setShowSettings] = useState(false);
-  const [filterTarget, setFilterTarget] = useState(false); // Filter for Education Keywords
+  // filterTarget removed
 
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -216,8 +216,9 @@ const App: React.FC = () => {
     return keywords.some(keyword => (item.bidNtceNm || "").includes(keyword));
   };
 
-  const displayedData = filterTarget ? data.filter(isTargetBid) : data;
-  const targetCount = data.filter(isTargetBid).length;
+  // Always display data as is (assuming DB only contains relevant data or user wants to see all)
+  const displayedData = data;
+  const targetCount = data.length;
 
   // Pagination logic
   const totalPages = Math.ceil(displayedData.length / itemsPerPage);
@@ -459,25 +460,15 @@ const App: React.FC = () => {
 
             {/* Target Filter Button */}
             <div className="flex items-center gap-4">
-              <button
-                onClick={() => {
-                  setFilterTarget(!filterTarget);
-                  setCurrentPage(1);
-                }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all border ${filterTarget
-                  ? 'bg-red-50 text-red-600 border-red-200 ring-2 ring-red-100'
-                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                  }`}
-              >
-                {filterTarget ? <CheckCircle2 className="w-4 h-4" /> : <Filter className="w-4 h-4" />}
-                교육 관련 공고만 보기
-                {targetCount > 0 && (
-                  <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${filterTarget ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
-                    }`}>
-                    {targetCount}
+              <div className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 cursor-default">
+                <CheckCircle2 className="w-4 h-4" />
+                교육/컨설팅 공고
+                {displayedData.length > 0 && (
+                  <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-indigo-100 text-indigo-800">
+                    {displayedData.length}
                   </span>
                 )}
-              </button>
+              </div>
             </div>
           </div>
 
@@ -559,21 +550,11 @@ const App: React.FC = () => {
                 <Search className="w-8 h-8 text-gray-300" />
               </div>
               <h3 className="text-gray-900 font-bold text-lg mb-1">
-                {filterTarget ? '조건에 맞는 공고가 없습니다' : '저장된 데이터가 없습니다'}
+                저장된 데이터가 없습니다
               </h3>
               <p className="text-gray-500 text-sm max-w-sm mx-auto mb-4">
-                {filterTarget
-                  ? '수집된 데이터 중 교육 관련 공고가 없습니다.'
-                  : '상단의 업데이트 버튼을 눌러 데이터를 수집해주세요.'}
+                상단의 업데이트 버튼을 눌러 데이터를 수집해주세요.
               </p>
-              {filterTarget && (
-                <button
-                  onClick={() => setFilterTarget(false)}
-                  className="text-blue-600 hover:underline text-sm font-medium"
-                >
-                  필터 해제하고 전체 보기
-                </button>
-              )}
             </div>
           ) : (
             <div className="text-center py-24 bg-white rounded-xl border border-dashed border-gray-300">
