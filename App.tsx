@@ -218,7 +218,6 @@ const App: React.FC = () => {
 
   // Always display data as is (assuming DB only contains relevant data or user wants to see all)
   const displayedData = data;
-  const targetCount = data.length;
 
   // Pagination logic
   const totalPages = Math.ceil(displayedData.length / itemsPerPage);
