@@ -5,6 +5,7 @@ import { AppStep } from '../types';
 
 interface StepIndicatorProps {
   currentStep: AppStep;
+  onStepClick?: (step: AppStep) => void;
 }
 
 const steps = [
@@ -14,10 +15,9 @@ const steps = [
   { id: AppStep.STRATEGY, label: "전략 수립" },
   { id: AppStep.CURRICULUM, label: "과정/강사 매칭" },
   { id: AppStep.PREVIEW, label: "제안서 검토" },
-  { id: AppStep.COMPLETE, label: "완료" },
 ];
 
-export const StepIndicator: React.FC<StepIndicatorProps> = ({ currentStep }) => {
+export const StepIndicator: React.FC<StepIndicatorProps> = ({ currentStep, onStepClick }) => {
   return (
     <div className="w-full py-6 px-4 mb-8">
       {/* 
@@ -32,28 +32,28 @@ export const StepIndicator: React.FC<StepIndicatorProps> = ({ currentStep }) => 
         {steps.map((step, index) => {
           const isCompleted = step.id < currentStep;
           const isCurrent = step.id === currentStep;
-          
+
           return (
             <div key={step.id} className="flex items-start">
-              <div className="flex flex-col items-center group px-2 min-w-[80px]">
+              <button
+                onClick={() => onStepClick?.(step.id)}
+                className="flex flex-col items-center group px-2 min-w-[80px] cursor-pointer outline-none"
+              >
                 <div
                   className={`w-10 h-10 flex items-center justify-center rounded-full border-2 transition-all duration-300 z-10 
-                    ${isCompleted ? 'bg-blue-600 border-blue-600 text-white' : 
-                      isCurrent ? 'bg-white border-blue-600 text-blue-600 ring-4 ring-blue-100' : 
-                      'bg-white border-gray-300 text-gray-300'}`}
+                    ${isCompleted ? 'bg-blue-600 border-blue-600 text-white group-hover:bg-blue-700' :
+                      isCurrent ? 'bg-white border-blue-600 text-blue-600 ring-4 ring-blue-100' :
+                        'bg-white border-gray-300 text-gray-300 group-hover:border-blue-300 group-hover:text-blue-300'}`}
                 >
                   {isCompleted ? <Check size={20} strokeWidth={3} /> : <span className="font-bold text-sm">{step.id}</span>}
                 </div>
-                
-                {/* Static positioning (mt-2) ensures the container grows to fit this text */}
-                <div className={`mt-2 text-xs font-semibold whitespace-nowrap ${isCurrent ? 'text-blue-600' : isCompleted ? 'text-gray-600' : 'text-gray-400'}`}>
+
+                <div className={`mt-2 text-xs font-semibold whitespace-nowrap transition-colors ${isCurrent ? 'text-blue-600' : isCompleted ? 'text-gray-600' : 'text-gray-400 group-hover:text-blue-400'}`}>
                   {step.label}
                 </div>
-              </div>
-              
+              </button>
+
               {index < steps.length - 1 && (
-                // Line alignment: Circle is 40px (h-10). Line is 4px (h-1). 
-                // Center is approx 18px down (20px - 2px).
                 <div className={`w-8 sm:w-16 md:w-20 h-1 mx-1 mt-[18px] transition-all duration-300 ${isCompleted ? 'bg-blue-600' : 'bg-gray-200'}`}></div>
               )}
             </div>

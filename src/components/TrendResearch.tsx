@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { AnalysisResult, TrendInsight, AgentConfig } from '../types';
 import { fetchTrendInsights } from '../services/geminiService';
-import { TrendingUp, ArrowRight, ChevronLeft } from 'lucide-react';
+import { TrendingUp, ArrowRight, ChevronLeft, AlertCircle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 interface Props {
@@ -19,16 +19,26 @@ export const TrendResearch: React.FC<Props> = ({ analysisData, onNext, onBack, a
   const [loading, setLoading] = useState(initialData.length === 0);
 
   useEffect(() => {
-    if (initialData.length === 0) {
+    if (initialData.length === 0 && analysisData.modules.length > 0 && analysisData.modules[0] !== 'N/A') {
       const loadTrends = async () => {
         const results = await fetchTrendInsights(analysisData.modules, agentConfig?.systemPrompt, apiKey, agentConfig?.model, globalModel);
         setTrends(results);
         setLoading(false);
       };
       loadTrends();
+    } else if (initialData.length === 0) {
+      // Set example data
+      setTrends([
+        { topic: "(예시) 퓨처 리더십 (Future Leadership)", insight: "불확실성 시대의 리더는 '지시'보다 '지원'하는 서번트 리더십과 디지털 문해력을 동시에 갖추어야 합니다.", source: "Gartner 2025 리더십 리포트", relevanceScore: 98 },
+        { topic: "(예시) AI-Native 워크플레이스", insight: "단순 툴 활용을 넘어 업무 프로세스 전반에 AI를 내재화하는 실용적 DT 교육 수요가 급증하고 있습니다.", source: "HBR 디지털 트랜스포메이션 가이드", relevanceScore: 92 },
+        { topic: "(예시) 스킬 기반 조직 (Skill-based Org)", insight: "직무(Job) 중심에서 보유 역량(Skill) 중심으로 인재를 배치하고 육성하는 전략이 글로벌 트렌드입니다.", source: "World Economic Forum 퓨처 잡 리포트", relevanceScore: 85 }
+      ]);
+      setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const isExampleMode = analysisData.programName === 'N/A' || analysisData.programName.includes('(예시)');
 
   if (loading) {
     return (
@@ -50,7 +60,15 @@ export const TrendResearch: React.FC<Props> = ({ analysisData, onNext, onBack, a
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8 pb-12">
+    <div className="max-w-6xl mx-auto space-y-6 pb-12">
+      {isExampleMode && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3 text-amber-800 animate-pulse">
+          <AlertCircle size={20} className="mt-0.5 flex-shrink-0" />
+          <div className="text-sm">
+            <span className="font-bold">예시 모드:</span> 이전 단계의 분석 데이터가 없어 가상의 트렌드 정보를 보여줍니다.
+          </div>
+        </div>
+      )}
       <section className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-indigo-50">
           <h3 className="text-lg font-bold text-indigo-900 flex items-center gap-2">

@@ -140,7 +140,7 @@ export const evaluateStrategies = async (
 export const matchCurriculum = async (
   modules: string[],
   trends: TrendInsight[],
-  selectedStrategy: StrategyOption | null,
+  selectedStrategies: StrategyOption[],
   _systemPrompt?: string,
   _apiKey?: string,
   _model?: string,
@@ -149,15 +149,18 @@ export const matchCurriculum = async (
   // Simulate AI processing delay
   await new Promise(resolve => setTimeout(resolve, 1800));
 
-  const strategyPrefix = selectedStrategy ? `[${selectedStrategy.focusArea}] ` : '';
+  const strategyPrefix = selectedStrategies.length > 0
+    ? `[${selectedStrategies.map(s => s.focusArea).join(" & ")}] `
+    : '';
 
   return modules.map((mod, idx) => ({
     id: `course-${idx}`,
     moduleName: mod,
     courseTitle: `${strategyPrefix}Expert ${mod} 마스터 클래스`,
-    instructor: idx % 2 === 0 ? "김철수 수석" : "이영희 이사",
-    matchReason: selectedStrategy
-      ? `선택하신 '${selectedStrategy.title}' 전략에 맞춰 ${selectedStrategy.focusArea} 요소를 30% 강화하여 설계했습니다.`
+    instructors: idx % 2 === 0 ? ["김철수 수석", "박민수 전문위원"] : ["이영희 이사", "최지혜 컨설턴트"],
+    selectedInstructors: idx % 2 === 0 ? ["김철수 수석", "박민수 전문위원"] : ["이영희 이사", "최지혜 컨설턴트"],
+    matchReason: selectedStrategies.length > 0
+      ? `선택하신 '${selectedStrategies.map(s => s.title).join(", ")}' 전략에 맞춰 ${selectedStrategies.map(s => s.focusArea).join(", ")} 요소를 30% 강화하여 설계했습니다.`
       : `트렌드 분석 결과(${trends[0]?.topic || '최신 동향'})를 반영하여 해당 모듈을 선정했습니다.`,
     matchScore: 90 + Math.floor(Math.random() * 10),
     isExternal: false
@@ -182,7 +185,7 @@ export const generateProposalContent = async (analysis: AnalysisResult, trends: 
     slides.push({
       id: 4 + idx,
       title: `Module ${idx + 1}: ${match.courseTitle}`,
-      content: `강사: ${match.instructor}\n\n매칭 포인트:\n${match.matchReason}\n\n이 모듈은 고객사의 요청인 '${match.moduleName}'을 완벽하게 커버합니다.`,
+      content: `추천 강사: ${match.instructors.join(", ")}\n\n매칭 포인트:\n${match.matchReason}\n\n이 모듈은 고객사의 요청인 '${match.moduleName}'을 완벽하게 커버합니다.`,
       type: "curriculum"
     });
   });

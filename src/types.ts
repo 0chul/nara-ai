@@ -85,7 +85,8 @@ export interface CourseMatch {
   id: string;
   moduleName: string;
   courseTitle: string;
-  instructor: string;
+  instructors: string[];
+  selectedInstructors: string[];
   matchReason: string;
   matchScore: number;
   isExternal: boolean;
@@ -153,8 +154,7 @@ export enum AppStep {
   RESEARCH = 3,
   STRATEGY = 4,
   CURRICULUM = 5,
-  PREVIEW = 6,
-  COMPLETE = 7
+  PREVIEW = 6
 }
 
 export interface ProposalDraft {
@@ -166,6 +166,6 @@ export interface ProposalDraft {
   files: RFPMetadata[];
   analysis: AnalysisResult | null;
   trends: TrendInsight[];
-  selectedStrategy: StrategyOption | null;
+  selectedStrategies: StrategyOption[];
   matches: CourseMatch[];
 }

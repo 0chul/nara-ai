@@ -15,6 +15,7 @@ import { NaraBidManager } from './components/NaraBidManager';
 import { AppStep, RFPMetadata, AnalysisResult, TrendInsight, CourseMatch, AgentConfig, PastProposal, InstructorProfile, ProposalDraft, StrategyOption, BidItem } from './types';
 import { Briefcase, Settings, Database, LayoutDashboard, Search } from 'lucide-react';
 import { convertBidToRFP } from './services/bidTransformer';
+import { getAllBids } from './services/naraDb';
 
 const DEFAULT_AGENTS: AgentConfig[] = [
   {
@@ -250,14 +251,14 @@ const MOCK_DRAFTS: ProposalDraft[] = [
     ],
     analysis: null,
     trends: [],
-    selectedStrategy: null,
+    selectedStrategies: [],
     matches: []
   },
   // Removed CJ & Lotte (Moved to MOCK_PROPOSALS)
   {
     id: 'draft-dummy-4',
     lastUpdated: new Date(Date.now() - 1000 * 60 * 60 * 24), // 1 day ago
-    step: AppStep.COMPLETE,
+    step: AppStep.PREVIEW,
     files: [{ fileName: 'Hanwha_Life_Finance_DT.pdf', fileSize: '2.8 MB', uploadDate: '2024-05-18' }],
     analysis: {
       clientName: "한화생명",
@@ -272,13 +273,13 @@ const MOCK_DRAFTS: ProposalDraft[] = [
       specialRequests: "금융 데이터 분석 실습 포함"
     },
     trends: [],
-    selectedStrategy: null,
+    selectedStrategies: [],
     matches: []
   },
   {
     id: 'draft-dummy-5',
     lastUpdated: new Date(Date.now() - 1000 * 60 * 60 * 48), // 2 days ago
-    step: AppStep.COMPLETE,
+    step: AppStep.PREVIEW,
     files: [{ fileName: 'GS_Retail_CS_Master.pdf', fileSize: '1.5 MB', uploadDate: '2024-05-15' }],
     analysis: {
       clientName: "GS리테일",
@@ -293,7 +294,7 @@ const MOCK_DRAFTS: ProposalDraft[] = [
       specialRequests: "롤플레잉 위주 구성"
     },
     trends: [],
-    selectedStrategy: null,
+    selectedStrategies: [],
     matches: []
   },
   {
@@ -314,7 +315,7 @@ const MOCK_DRAFTS: ProposalDraft[] = [
       specialRequests: "연구원 특성 고려한 논리적 접근 필요"
     },
     trends: [],
-    selectedStrategy: null,
+    selectedStrategies: [],
     matches: []
   },
   {
@@ -335,7 +336,7 @@ const MOCK_DRAFTS: ProposalDraft[] = [
       specialRequests: "EU 공급망 실사법 위주"
     },
     trends: [],
-    selectedStrategy: null,
+    selectedStrategies: [],
     matches: []
   }
 ];
@@ -348,7 +349,7 @@ const App: React.FC = () => {
   const [uploadedFiles, setUploadedFiles] = useState<RFPMetadata[]>([]);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [trends, setTrends] = useState<TrendInsight[]>([]);
-  const [selectedStrategy, setSelectedStrategy] = useState<StrategyOption | null>(null);
+  const [selectedStrategies, setSelectedStrategies] = useState<StrategyOption[]>([]);
   const [matches, setMatches] = useState<CourseMatch[]>([]);
 
   // Global App State
@@ -431,7 +432,7 @@ const App: React.FC = () => {
           files: files,
           analysis: null,
           trends: [],
-          selectedStrategy: null,
+          selectedStrategies: [],
           matches: []
         };
         setDrafts(prev => [newDraft, ...prev]);
@@ -460,12 +461,12 @@ const App: React.FC = () => {
     }
   };
 
-  const handleStrategyComplete = (strategy: StrategyOption) => {
-    setSelectedStrategy(strategy);
+  const handleStrategyComplete = (strategies: StrategyOption[]) => {
+    setSelectedStrategies(strategies);
     setCurrentStep(AppStep.CURRICULUM);
     if (currentDraftId) {
       if (window.confirm("선택한 전략을 저장하고 과정 매칭을 진행하시겠습니까?")) {
-        updateDraft(currentDraftId, { selectedStrategy: strategy, step: AppStep.CURRICULUM });
+        updateDraft(currentDraftId, { selectedStrategies: strategies, step: AppStep.CURRICULUM });
       }
     }
   };
@@ -500,7 +501,7 @@ const App: React.FC = () => {
     setUploadedFiles([]);
     setAnalysisResult(null);
     setTrends([]);
-    setSelectedStrategy(null);
+    setSelectedStrategies([]);
     setMatches([]);
     setCurrentStep(AppStep.UPLOAD);
 
@@ -517,7 +518,7 @@ const App: React.FC = () => {
     setUploadedFiles(draft.files);
     setAnalysisResult(draft.analysis);
     setTrends(draft.trends);
-    setSelectedStrategy(draft.selectedStrategy);
+    setSelectedStrategies(draft.selectedStrategies || []);
     setMatches(draft.matches);
     setCurrentStep(draft.step);
 
@@ -578,7 +579,7 @@ const App: React.FC = () => {
       files: [bidMetadata],
       analysis: rfpData,
       trends: [],
-      selectedStrategy: null,
+      selectedStrategies: [],
       matches: []
     };
     setDrafts(prev => [newDraft, ...prev]);
@@ -684,7 +685,7 @@ const App: React.FC = () => {
           />
         ) : (
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fade-in-up">
-            <StepIndicator currentStep={currentStep} />
+            <StepIndicator currentStep={currentStep} onStepClick={(step) => setCurrentStep(step)} />
 
             <div className="min-h-[500px]">
               {currentStep === AppStep.UPLOAD && (
@@ -703,9 +704,9 @@ const App: React.FC = () => {
                 />
               )}
 
-              {currentStep === AppStep.RESEARCH && analysisResult && (
+              {currentStep === AppStep.RESEARCH && (
                 <TrendResearch
-                  analysisData={analysisResult}
+                  analysisData={analysisResult || { clientName: 'N/A', industry: 'N/A', department: 'N/A', programName: 'N/A', objectives: [], targetAudience: 'N/A', schedule: 'N/A', location: 'N/A', modules: [], specialRequests: '' }}
                   onNext={handleResearchComplete}
                   onBack={handleBack}
                   agentConfig={agentConfigs.find(a => a.id === 'trend-researcher')}
@@ -715,25 +716,25 @@ const App: React.FC = () => {
                 />
               )}
 
-              {currentStep === AppStep.STRATEGY && analysisResult && (
+              {currentStep === AppStep.STRATEGY && (
                 <StrategyPlanning
-                  analysisData={analysisResult}
+                  analysisData={analysisResult || { clientName: 'N/A', industry: 'N/A', department: 'N/A', programName: 'N/A', objectives: [], targetAudience: 'N/A', schedule: 'N/A', location: 'N/A', modules: [], specialRequests: '' }}
                   trendData={trends}
                   onNext={handleStrategyComplete}
                   onBack={handleBack}
                   agentConfig={agentConfigs.find(a => a.id === 'strategy-planner')}
                   qaConfig={agentConfigs.find(a => a.id === 'qa-agent')}
-                  initialSelection={selectedStrategy}
+                  initialSelection={selectedStrategies}
                   apiKey={aiApiKey}
                   globalModel={globalModel}
                 />
               )}
 
-              {currentStep === AppStep.CURRICULUM && analysisResult && (
+              {currentStep === AppStep.CURRICULUM && (
                 <CurriculumMatching
-                  analysisData={analysisResult}
+                  analysisData={analysisResult || { clientName: 'N/A', industry: 'N/A', department: 'N/A', programName: 'N/A', objectives: [], targetAudience: 'N/A', schedule: 'N/A', location: 'N/A', modules: [], specialRequests: '' }}
                   trendData={trends}
-                  selectedStrategy={selectedStrategy}
+                  selectedStrategies={selectedStrategies}
                   onNext={handleCurriculumComplete}
                   onBack={handleBack}
                   agentConfig={agentConfigs.find(a => a.id === 'curriculum-matcher')}
@@ -743,9 +744,9 @@ const App: React.FC = () => {
                 />
               )}
 
-              {currentStep === AppStep.PREVIEW && analysisResult && (
+              {currentStep === AppStep.PREVIEW && (
                 <ProposalPreview
-                  analysis={analysisResult}
+                  analysis={analysisResult || { clientName: 'N/A', industry: 'N/A', department: 'N/A', programName: 'N/A', objectives: [], targetAudience: 'N/A', schedule: 'N/A', location: 'N/A', modules: [], specialRequests: '' }}
                   trends={trends}
                   matches={matches}
                   agentConfigs={agentConfigs}

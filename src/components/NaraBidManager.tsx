@@ -18,6 +18,8 @@ export const NaraBidManager: React.FC<NaraBidManagerProps> = ({ onSelectBid, api
     const [searchKeyword, setSearchKeyword] = useState('');
     const [selectedBid, setSelectedBid] = useState<BidItem | null>(null);
     const [scannedCount, setScannedCount] = useState<number | null>(null);
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
 
     // Period state (Default last 30 days)
     const [startDate, setStartDate] = useState(() => {
@@ -37,6 +39,7 @@ export const NaraBidManager: React.FC<NaraBidManagerProps> = ({ onSelectBid, api
         try {
             const savedBids = await getAllBids();
             setBids(savedBids);
+            setCurrentPage(1);
         } catch (error: any) {
             console.error('Failed to load bids from DB:', error);
             alert(`DB 데이터를 불러오는 데 실패했습니다: ${error.message}`);
@@ -86,6 +89,7 @@ export const NaraBidManager: React.FC<NaraBidManagerProps> = ({ onSelectBid, api
 
                 setBids(filtered);
                 setScannedCount(result.scannedCount);
+                setCurrentPage(1);
             }
         } catch (error: any) {
             console.error('Failed to fetch bids:', error);
@@ -127,6 +131,17 @@ export const NaraBidManager: React.FC<NaraBidManagerProps> = ({ onSelectBid, api
     };
 
     const pinnedCount = bids.filter(b => b.isPinned).length;
+
+    // Pagination logic
+    const indexOfLastItem = currentPage * itemsPerPage;
+    const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+    const paginatedBids = bids.slice(indexOfFirstItem, indexOfLastItem);
+    const totalPages = Math.ceil(bids.length / itemsPerPage);
+
+    const handlePageChange = (page: number) => {
+        setCurrentPage(page);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
 
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
@@ -215,113 +230,168 @@ export const NaraBidManager: React.FC<NaraBidManagerProps> = ({ onSelectBid, api
                     <p className="text-slate-500 font-medium">최신 입찰 데이터를 불러오는 중입니다...</p>
                 </div>
             ) : bids.length > 0 ? (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {bids.map((bid) => (
-                        <div
-                            key={`${bid.bidNtceNo}-${bid.bidNtceOrd}`}
-                            onClick={() => setSelectedBid(bid)}
-                            className={`group relative bg-white border-2 rounded-2xl p-6 transition-all cursor-pointer hover:shadow-xl ${selectedBid?.bidNtceNo === bid.bidNtceNo ? 'border-blue-500 shadow-md ring-1 ring-blue-500/20' : 'border-slate-100 hover:border-slate-300 shadow-sm'
-                                }`}
-                        >
-                            {bid.isPinned && (
-                                <div className="absolute -top-3 -left-3 bg-blue-600 text-white p-2 rounded-xl shadow-lg z-10">
-                                    <Pin size={16} className="fill-white" />
-                                </div>
-                            )}
+                <div className="space-y-8">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {paginatedBids.map((bid) => (
+                            <div
+                                key={`${bid.bidNtceNo}-${bid.bidNtceOrd}`}
+                                onClick={() => setSelectedBid(bid)}
+                                className={`group relative bg-white border-2 rounded-2xl p-6 transition-all cursor-pointer hover:shadow-xl ${selectedBid?.bidNtceNo === bid.bidNtceNo ? 'border-blue-500 shadow-md ring-1 ring-blue-500/20' : 'border-slate-100 hover:border-slate-300 shadow-sm'
+                                    }`}
+                            >
+                                {bid.isPinned && (
+                                    <div className="absolute -top-3 -left-3 bg-blue-600 text-white p-2 rounded-xl shadow-lg z-10">
+                                        <Pin size={16} className="fill-white" />
+                                    </div>
+                                )}
 
-                            <div className="flex justify-between items-start gap-4 mb-4">
-                                <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${bid.bidNtceSttusNm.includes('마감') ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-green-50 text-green-600 border border-green-100'
-                                            }`}>
-                                            {bid.bidNtceSttusNm}
-                                        </span>
-                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
-                                            {bid.bidNtceNo}-{bid.bidNtceOrd}
-                                        </span>
+                                <div className="flex justify-between items-start gap-4 mb-4">
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${bid.bidNtceSttusNm.includes('마감') ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-green-50 text-green-600 border border-green-100'
+                                                }`}>
+                                                {bid.bidNtceSttusNm}
+                                            </span>
+                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                                                {bid.bidNtceNo}-{bid.bidNtceOrd}
+                                            </span>
+                                        </div>
+                                        <h3 className="text-lg font-bold text-slate-900 leading-snug group-hover:text-blue-600 transition-colors">
+                                            {bid.bidNtceNm}
+                                        </h3>
                                     </div>
-                                    <h3 className="text-lg font-bold text-slate-900 leading-snug group-hover:text-blue-600 transition-colors">
-                                        {bid.bidNtceNm}
-                                    </h3>
+                                    <div className="flex flex-col items-end gap-2">
+                                        <button
+                                            onClick={(e) => handleTogglePin(e, bid)}
+                                            className={`p-2.5 rounded-xl transition-all ${bid.isPinned
+                                                ? 'bg-blue-600 text-white shadow-md'
+                                                : 'bg-slate-50 text-slate-400 hover:bg-blue-50 hover:text-blue-600'
+                                                }`}
+                                            title={bid.isPinned ? "핀 제거" : "유망 공고로 핀업"}
+                                        >
+                                            {bid.isPinned ? <PinOff size={20} /> : <Pin size={20} />}
+                                        </button>
+                                        <a
+                                            href={bid.bidNtceUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="p-2.5 bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-900 rounded-xl transition-all"
+                                            title="원본 공고 보기"
+                                        >
+                                            <ExternalLink size={20} />
+                                        </a>
+                                    </div>
                                 </div>
-                                <div className="flex flex-col items-end gap-2">
-                                    <button
-                                        onClick={(e) => handleTogglePin(e, bid)}
-                                        className={`p-2.5 rounded-xl transition-all ${bid.isPinned
-                                            ? 'bg-blue-600 text-white shadow-md'
-                                            : 'bg-slate-50 text-slate-400 hover:bg-blue-50 hover:text-blue-600'
-                                            }`}
-                                        title={bid.isPinned ? "핀 제거" : "유망 공고로 핀업"}
-                                    >
-                                        {bid.isPinned ? <PinOff size={20} /> : <Pin size={20} />}
-                                    </button>
-                                    <a
-                                        href={bid.bidNtceUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        onClick={(e) => e.stopPropagation()}
-                                        className="p-2.5 bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-900 rounded-xl transition-all"
-                                        title="원본 공고 보기"
-                                    >
-                                        <ExternalLink size={20} />
-                                    </a>
-                                </div>
-                            </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-y-3 gap-x-6">
-                                <div className="flex items-center gap-2 text-slate-600">
-                                    <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400">
-                                        <Building2 size={16} />
-                                    </div>
-                                    <div className="flex flex-col">
-                                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">발주처</span>
-                                        <span className="text-sm font-medium">{bid.ntceInsttNm}</span>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-2 text-slate-600">
-                                    <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400">
-                                        <MapPin size={16} />
-                                    </div>
-                                    <div className="flex flex-col">
-                                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">지역/업종</span>
-                                        <span className="text-sm font-medium truncate max-w-[150px]">{bid.prtcptPsblRgnNm || '전국'}</span>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-2 text-slate-600">
-                                    <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400">
-                                        <Calendar size={16} />
-                                    </div>
-                                    <div className="flex flex-col">
-                                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">응찰 기간</span>
-                                        <span className="text-sm font-medium">{formatDate(bid.bidNtceBgnDt)} ~ {formatDate(bid.bidNtceEndDt)}</span>
-                                    </div>
-                                </div>
-                                {bid.presmptPrce && (
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
-                                            <span className="text-xs font-bold">₩</span>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-y-3 gap-x-6">
+                                    <div className="flex items-center gap-2 text-slate-600">
+                                        <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400">
+                                            <Building2 size={16} />
                                         </div>
                                         <div className="flex flex-col">
-                                            <span className="text-[10px] text-blue-400 font-bold uppercase tracking-tight">추정가격</span>
-                                            <span className="text-sm font-bold text-blue-700">{Number(bid.presmptPrce).toLocaleString()}원</span>
+                                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">발주처</span>
+                                            <span className="text-sm font-medium">{bid.ntceInsttNm}</span>
                                         </div>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-slate-600">
+                                        <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400">
+                                            <MapPin size={16} />
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">지역/업종</span>
+                                            <span className="text-sm font-medium truncate max-w-[150px]">{bid.prtcptPsblRgnNm || '전국'}</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-slate-600">
+                                        <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400">
+                                            <Calendar size={16} />
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">응찰 기간</span>
+                                            <span className="text-sm font-medium">{formatDate(bid.bidNtceBgnDt)} ~ {formatDate(bid.bidNtceEndDt)}</span>
+                                        </div>
+                                    </div>
+                                    {bid.presmptPrce && (
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
+                                                <span className="text-xs font-bold">₩</span>
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-[10px] text-blue-400 font-bold uppercase tracking-tight">추정가격</span>
+                                                <span className="text-sm font-bold text-blue-700">{Number(bid.presmptPrce).toLocaleString()}원</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {selectedBid?.bidNtceNo === bid.bidNtceNo && (
+                                    <div className="mt-6 pt-6 border-t border-slate-100 flex justify-end animate-fade-in">
+                                        <button
+                                            onClick={handleSelectBid}
+                                            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 shadow-lg shadow-blue-500/20"
+                                        >
+                                            <CheckCircle2 size={18} />
+                                            이 공고로 제안서 작성 시작
+                                        </button>
                                     </div>
                                 )}
                             </div>
+                        ))}
+                    </div>
 
-                            {selectedBid?.bidNtceNo === bid.bidNtceNo && (
-                                <div className="mt-6 pt-6 border-t border-slate-100 flex justify-end animate-fade-in">
-                                    <button
-                                        onClick={handleSelectBid}
-                                        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 shadow-lg shadow-blue-500/20"
-                                    >
-                                        <CheckCircle2 size={18} />
-                                        이 공고로 제안서 작성 시작
-                                    </button>
-                                </div>
-                            )}
+                    {/* Pagination UI */}
+                    {totalPages > 1 && (
+                        <div className="flex justify-center items-center gap-2 py-8">
+                            <button
+                                onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+                                disabled={currentPage === 1}
+                                className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                                이전
+                            </button>
+
+                            <div className="flex gap-1">
+                                {[...Array(totalPages)].map((_, i) => {
+                                    const pageNum = i + 1;
+                                    // Show only some page numbers if there are too many
+                                    if (
+                                        totalPages <= 7 ||
+                                        pageNum === 1 ||
+                                        pageNum === totalPages ||
+                                        (pageNum >= currentPage - 2 && pageNum <= currentPage + 2)
+                                    ) {
+                                        return (
+                                            <button
+                                                key={pageNum}
+                                                onClick={() => handlePageChange(pageNum)}
+                                                className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold transition-all ${currentPage === pageNum
+                                                        ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                                                        : 'bg-white border border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-600'
+                                                    }`}
+                                            >
+                                                {pageNum}
+                                            </button>
+                                        );
+                                    } else if (
+                                        pageNum === currentPage - 3 ||
+                                        pageNum === currentPage + 3
+                                    ) {
+                                        return <span key={pageNum} className="w-10 h-10 flex items-center justify-center text-slate-400">...</span>;
+                                    }
+                                    return null;
+                                })}
+                            </div>
+
+                            <button
+                                onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
+                                disabled={currentPage === totalPages}
+                                className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                                다음
+                            </button>
                         </div>
-                    ))}
+                    )}
                 </div>
             ) : (
                 <div className="bg-white rounded-2xl border-2 border-dashed border-slate-200 py-32 flex flex-col items-center justify-center text-center px-6">

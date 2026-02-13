@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { PastProposal, ProposalDraft, AppStep } from '../types';
+import { PastProposal, ProposalDraft, AppStep, BidItem } from '../types';
 import { Plus, FileText, Clock, TrendingUp, ArrowUpRight, FolderOpen, PlayCircle, Award, XCircle, Trash2, CheckCircle, Edit, Pin, Building2, Calendar } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -27,8 +27,8 @@ const STATS_DATA = [
 
 export const Dashboard: React.FC<Props> = ({ proposals, drafts, pinnedBids = [], onNewProposal, onResumeDraft, onSelectPinnedBid, onViewAll, onUpdateDraftStatus, onDeleteDraft }) => {
     // Filter drafts into In Progress vs Completed
-    const inProgressDrafts = drafts.filter(d => d.step < AppStep.COMPLETE);
-    const completedDrafts = drafts.filter(d => d.step === AppStep.COMPLETE);
+    const inProgressDrafts = drafts.filter(d => d.step < AppStep.PREVIEW);
+    const completedDrafts = drafts.filter(d => d.step === AppStep.PREVIEW);
 
     // Calculate stats
     const totalProposals = proposals.length;
@@ -57,7 +57,6 @@ export const Dashboard: React.FC<Props> = ({ proposals, drafts, pinnedBids = [],
             case AppStep.RESEARCH: return "트렌드 리서치";
             case AppStep.STRATEGY: return "전략 및 과정 매칭";
             case AppStep.PREVIEW: return "제안서 초안 검토";
-            case AppStep.COMPLETE: return "완료";
             default: return "준비 중";
         }
     };
