@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BidItem } from '../types';
-import { getAllBids, toggleBidPin, saveBids, testDbConnection } from '../services/naraDb';
+import { getAllBids, toggleBidPin, saveBids } from '../services/naraDb';
 import { fetchBidNotices } from '../services/naraApi';
 import { Search, RefreshCw, Calendar, Building2, MapPin, ExternalLink, CheckCircle2, Pin, PinOff, Inbox } from 'lucide-react';
 

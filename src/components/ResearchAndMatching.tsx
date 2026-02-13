@@ -29,7 +29,7 @@ export const ResearchAndMatching: React.FC<Props> = ({ analysisData, onNext, age
       const matchResults = await matchCurriculum(
         analysisData.modules,
         trendResults,
-        null,
+        [],
         matchAgent?.systemPrompt
       );
       setMatches(matchResults);
@@ -144,7 +144,7 @@ export const ResearchAndMatching: React.FC<Props> = ({ analysisData, onNext, age
                 </div>
                 <div>
                   <div className="text-xs text-slate-500">추천 강사</div>
-                  <div className="font-semibold text-slate-800">{match.instructor}</div>
+                  <div className="font-semibold text-slate-800">{match.instructors.join(', ')}</div>
                 </div>
               </div>
 

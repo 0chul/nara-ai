@@ -69,7 +69,9 @@ export const generateStrategyOptions = async (
   _analysis: AnalysisResult,
   _trends: TrendInsight[],
   _systemPrompt?: string,
-  _apiKey?: string
+  _apiKey?: string,
+  _model?: string,
+  _fallbackModel?: string
 ): Promise<StrategyOption[]> => {
   await new Promise(resolve => setTimeout(resolve, 2000));
 
@@ -104,7 +106,9 @@ export const generateStrategyOptions = async (
 export const evaluateStrategies = async (
   _strategies: StrategyOption[],
   _systemPrompt?: string,
-  _apiKey?: string
+  _apiKey?: string,
+  _model?: string,
+  _fallbackModel?: string
 ): Promise<StrategyEvaluation[]> => {
   await new Promise(resolve => setTimeout(resolve, 1500));
 

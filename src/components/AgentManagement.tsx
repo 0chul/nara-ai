@@ -8,6 +8,8 @@ interface Props {
     agents: AgentConfig[];
     onSave: (updatedAgents: AgentConfig[]) => void;
     onClose: () => void;
+    globalModel: string;
+    onSaveGlobalModel: (model: string) => void;
     aiApiKey: string;
     onSaveAiApiKey: (key: string) => void;
     naraApiKey: string;
@@ -20,6 +22,8 @@ export const AgentManagement: React.FC<Props> = ({
     agents,
     onSave,
     onClose,
+    globalModel,
+    onSaveGlobalModel,
     aiApiKey,
     onSaveAiApiKey,
     naraApiKey,
@@ -30,6 +34,7 @@ export const AgentManagement: React.FC<Props> = ({
     // 'global' id represents the Global Settings page
     const [selectedId, setSelectedId] = useState<string>('global');
     const [localAgents, setLocalAgents] = useState<AgentConfig[]>(agents);
+    const [localGlobalModel, setLocalGlobalModel] = useState(globalModel);
     const [localAiKey, setLocalAiKey] = useState(aiApiKey);
     const [localNaraKey, setLocalNaraKey] = useState(naraApiKey);
 
@@ -54,6 +59,7 @@ export const AgentManagement: React.FC<Props> = ({
 
     const handleSaveAll = () => {
         onSave(localAgents);
+        onSaveGlobalModel(localGlobalModel);
         onSaveAiApiKey(localAiKey);
         onSaveNaraApiKey(localNaraKey);
         onSaveShouldEncodeKey(localShouldEncode);
@@ -184,6 +190,22 @@ export const AgentManagement: React.FC<Props> = ({
                                     <div className="flex items-start gap-3">
                                         <Cpu className="text-blue-500 mt-1" size={20} />
                                         <div className="flex-1">
+                                            <label className="block text-sm font-bold text-slate-700 mb-1">
+                                                기본 모델 (Global Model)
+                                            </label>
+                                            <p className="text-xs text-slate-500 mb-3 leading-relaxed">
+                                                각 에이전트에 별도 모델을 지정하지 않으면 이 모델을 기본값으로 사용합니다.
+                                            </p>
+                                            <select
+                                                value={localGlobalModel}
+                                                onChange={(e) => setLocalGlobalModel(e.target.value)}
+                                                className="w-full mb-5 p-3 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 bg-white"
+                                            >
+                                                <option value="gemini-2.5-flash">Gemini 2.5 Flash (Recommended)</option>
+                                                <option value="gemini-3-pro-preview">Gemini 3.0 Pro (High Intelligence)</option>
+                                                <option value="gemini-flash-thinking">Gemini 2.5 Flash Thinking</option>
+                                            </select>
+
                                             <label className="block text-sm font-bold text-slate-700 mb-1">
                                                 파운데이션 모델 API 키 (AI Model API Key)
                                             </label>

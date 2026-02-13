@@ -38,7 +38,7 @@ export const CurriculumMatching: React.FC<Props> = ({ analysisData, trendData, s
           const results = await matchCurriculum(
             analysisData.modules,
             trendData,
-            selectedStrategies[0] || null, // Keeping legacy single strategy support for AI call for now or update it
+            selectedStrategies,
             agentConfig?.systemPrompt,
             apiKey,
             agentConfig?.model,

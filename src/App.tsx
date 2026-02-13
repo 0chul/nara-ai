@@ -341,6 +341,36 @@ const MOCK_DRAFTS: ProposalDraft[] = [
   }
 ];
 
+type AppView = 'dashboard' | 'wizard' | 'agents' | 'knowledge' | 'nara';
+
+const EMPTY_ANALYSIS_RESULT: AnalysisResult = {
+  clientName: 'N/A',
+  industry: 'N/A',
+  department: 'N/A',
+  programName: 'N/A',
+  objectives: [],
+  targetAudience: 'N/A',
+  schedule: 'N/A',
+  location: 'N/A',
+  modules: [],
+  specialRequests: ''
+};
+
+const createDraft = (
+  step: AppStep,
+  files: RFPMetadata[],
+  analysis: AnalysisResult | null = null
+): ProposalDraft => ({
+  id: Date.now().toString(),
+  lastUpdated: new Date(),
+  step,
+  files,
+  analysis,
+  trends: [],
+  selectedStrategies: [],
+  matches: []
+});
+
 const App: React.FC = () => {
   const [currentStep, setCurrentStep] = useState<AppStep>(AppStep.UPLOAD);
 
@@ -353,7 +383,7 @@ const App: React.FC = () => {
   const [matches, setMatches] = useState<CourseMatch[]>([]);
 
   // Global App State
-  const [view, setView] = useState<'dashboard' | 'wizard' | 'agents' | 'knowledge' | 'nara'>('dashboard');
+  const [view, setView] = useState<AppView>('dashboard');
   const [drafts, setDrafts] = useState<ProposalDraft[]>(MOCK_DRAFTS);
   const [showNaraBrowser, setShowNaraBrowser] = useState(false);
 
@@ -385,7 +415,10 @@ const App: React.FC = () => {
   // Listen for nara browser open event
   useEffect(() => {
     const handleOpenNaraBrowser = () => setShowNaraBrowser(true);
-    const handleSelectPinnedBid = (e: any) => handleBidSelection(e.detail);
+    const handleSelectPinnedBid = (event: Event) => {
+      const customEvent = event as CustomEvent<BidItem>;
+      handleBidSelection(customEvent.detail);
+    };
 
     window.addEventListener('open-nara-browser', handleOpenNaraBrowser);
     window.addEventListener('select-pinned-bid', handleSelectPinnedBid);
@@ -423,20 +456,9 @@ const App: React.FC = () => {
       if (currentDraftId) {
         updateDraft(currentDraftId, { files, step: AppStep.ANALYSIS });
       } else {
-        // Create new draft only if user confirms
-        const newDraftId = Date.now().toString();
-        const newDraft: ProposalDraft = {
-          id: newDraftId,
-          lastUpdated: new Date(),
-          step: AppStep.ANALYSIS,
-          files: files,
-          analysis: null,
-          trends: [],
-          selectedStrategies: [],
-          matches: []
-        };
+        const newDraft = createDraft(AppStep.ANALYSIS, files);
         setDrafts(prev => [newDraft, ...prev]);
-        setCurrentDraftId(newDraftId);
+        setCurrentDraftId(newDraft.id);
       }
     }
   };
@@ -495,6 +517,9 @@ const App: React.FC = () => {
   const handleSaveAgents = (updatedAgents: AgentConfig[]) => {
     setAgentConfigs(updatedAgents);
   };
+
+  const getAgentConfig = (agentId: string) => agentConfigs.find(agent => agent.id === agentId);
+  const analysisDataForFlow = analysisResult ?? EMPTY_ANALYSIS_RESULT;
 
   const startNewProposal = () => {
     // Reset State
@@ -570,20 +595,9 @@ const App: React.FC = () => {
     setCurrentStep(AppStep.RESEARCH); // Skip analysis step
     setShowNaraBrowser(false);
 
-    // Create draft
-    const newDraftId = Date.now().toString();
-    const newDraft: ProposalDraft = {
-      id: newDraftId,
-      lastUpdated: new Date(),
-      step: AppStep.RESEARCH,
-      files: [bidMetadata],
-      analysis: rfpData,
-      trends: [],
-      selectedStrategies: [],
-      matches: []
-    };
+    const newDraft = createDraft(AppStep.RESEARCH, [bidMetadata], rfpData);
     setDrafts(prev => [newDraft, ...prev]);
-    setCurrentDraftId(newDraftId);
+    setCurrentDraftId(newDraft.id);
   };
 
   return (
@@ -676,6 +690,8 @@ const App: React.FC = () => {
             agents={agentConfigs}
             onSave={handleSaveAgents}
             onClose={() => setView('dashboard')}
+            globalModel={globalModel}
+            onSaveGlobalModel={setGlobalModel}
             aiApiKey={aiApiKey}
             onSaveAiApiKey={setAiApiKey}
             naraApiKey={naraApiKey}
@@ -697,7 +713,7 @@ const App: React.FC = () => {
                   files={uploadedFiles}
                   onConfirm={handleAnalysisConfirm}
                   onBack={handleBack}
-                  agentConfig={agentConfigs.find(a => a.id === 'rfp-analyst')}
+                  agentConfig={getAgentConfig('rfp-analyst')}
                   initialData={analysisResult}
                   apiKey={aiApiKey}
                   globalModel={globalModel}
@@ -706,10 +722,10 @@ const App: React.FC = () => {
 
               {currentStep === AppStep.RESEARCH && (
                 <TrendResearch
-                  analysisData={analysisResult || { clientName: 'N/A', industry: 'N/A', department: 'N/A', programName: 'N/A', objectives: [], targetAudience: 'N/A', schedule: 'N/A', location: 'N/A', modules: [], specialRequests: '' }}
+                  analysisData={analysisDataForFlow}
                   onNext={handleResearchComplete}
                   onBack={handleBack}
-                  agentConfig={agentConfigs.find(a => a.id === 'trend-researcher')}
+                  agentConfig={getAgentConfig('trend-researcher')}
                   initialData={trends}
                   apiKey={aiApiKey}
                   globalModel={globalModel}
@@ -718,12 +734,12 @@ const App: React.FC = () => {
 
               {currentStep === AppStep.STRATEGY && (
                 <StrategyPlanning
-                  analysisData={analysisResult || { clientName: 'N/A', industry: 'N/A', department: 'N/A', programName: 'N/A', objectives: [], targetAudience: 'N/A', schedule: 'N/A', location: 'N/A', modules: [], specialRequests: '' }}
+                  analysisData={analysisDataForFlow}
                   trendData={trends}
                   onNext={handleStrategyComplete}
                   onBack={handleBack}
-                  agentConfig={agentConfigs.find(a => a.id === 'strategy-planner')}
-                  qaConfig={agentConfigs.find(a => a.id === 'qa-agent')}
+                  agentConfig={getAgentConfig('strategy-planner')}
+                  qaConfig={getAgentConfig('qa-agent')}
                   initialSelection={selectedStrategies}
                   apiKey={aiApiKey}
                   globalModel={globalModel}
@@ -732,12 +748,12 @@ const App: React.FC = () => {
 
               {currentStep === AppStep.CURRICULUM && (
                 <CurriculumMatching
-                  analysisData={analysisResult || { clientName: 'N/A', industry: 'N/A', department: 'N/A', programName: 'N/A', objectives: [], targetAudience: 'N/A', schedule: 'N/A', location: 'N/A', modules: [], specialRequests: '' }}
+                  analysisData={analysisDataForFlow}
                   trendData={trends}
                   selectedStrategies={selectedStrategies}
                   onNext={handleCurriculumComplete}
                   onBack={handleBack}
-                  agentConfig={agentConfigs.find(a => a.id === 'curriculum-matcher')}
+                  agentConfig={getAgentConfig('curriculum-matcher')}
                   initialData={matches}
                   apiKey={aiApiKey}
                   globalModel={globalModel}
@@ -746,7 +762,7 @@ const App: React.FC = () => {
 
               {currentStep === AppStep.PREVIEW && (
                 <ProposalPreview
-                  analysis={analysisResult || { clientName: 'N/A', industry: 'N/A', department: 'N/A', programName: 'N/A', objectives: [], targetAudience: 'N/A', schedule: 'N/A', location: 'N/A', modules: [], specialRequests: '' }}
+                  analysis={analysisDataForFlow}
                   trends={trends}
                   matches={matches}
                   agentConfigs={agentConfigs}
