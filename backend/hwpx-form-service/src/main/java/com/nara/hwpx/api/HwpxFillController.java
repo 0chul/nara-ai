@@ -64,13 +64,27 @@ public class HwpxFillController {
             tempTemplatePath = Files.createTempFile("nara-template-", ".hwpx");
 
             templateFile.transferTo(tempTemplatePath);
-            byte[] filledHwpx = fillService.fillTemplate(tempTemplatePath.toFile(), fields);
+            HwpxTemplateFillService.FillResult result = fillService.fillTemplate(tempTemplatePath.toFile(), fields);
 
             String safeOutputName = makeOutputFileName(outputFileName, originalFileName);
+            int filledTotal = result.stats() == null ? 0 : result.stats().total;
+            if (filledTotal <= 0) {
+                String message = "HWPX fill skipped: no writable placeholders were detected in this template. "
+                        + "For POC, try a real submission form template (서식/양식) or add {{token}} placeholders.";
+                return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .header("X-HWPX-Fill-Total", "0")
+                        .body(message.getBytes(StandardCharsets.UTF_8));
+            }
             return ResponseEntity.ok()
                     .contentType(MediaType.APPLICATION_OCTET_STREAM)
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + safeOutputName + "\"")
-                    .body(filledHwpx);
+                    .header("X-HWPX-Fill-Total", String.valueOf(filledTotal))
+                    .header("X-HWPX-Fill-Token", String.valueOf(result.stats().tokenReplacements))
+                    .header("X-HWPX-Fill-Field", String.valueOf(result.stats().namedFieldsFilled))
+                    .header("X-HWPX-Fill-Table", String.valueOf(result.stats().tableCellsFilled))
+                    .header("X-HWPX-Fill-Inline", String.valueOf(result.stats().inlineLabelCellsFilled))
+                    .body(result.bytes());
         } catch (Exception ex) {
             String message = "HWPX fill failed: " + sanitizeError(ex.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

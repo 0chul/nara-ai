@@ -21,7 +21,10 @@ dist-ssr
 # Local debug artifacts (G2B/HWPX experiments)
 _filled-test.hwpx
 _filled-test*.hwpx
+_filled-*.hwpx
 _filled_extract_*/
+_tmpl_extract_*/
+_template_*.hwpx
 _dev_test_fill.js
 _*.json
 _*.txt
@@ -31,6 +34,9 @@ _*.xml
 tmp_*.html
 tmp_*.json
 tmp_*.txt
+
+# Local toolchains (keep repo portable)
+**/.tooling/
 
 # Editor directories and files
 .vscode/*
