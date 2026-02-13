@@ -99,6 +99,26 @@ export interface ProposalSlide {
   type: 'cover' | 'agenda' | 'overview' | 'trend' | 'curriculum' | 'instructor' | 'schedule' | 'closing';
 }
 
+export interface NaraDocumentSection {
+  id: string;
+  title: string;
+  required: boolean;
+  templateHint: string;
+  content: string;
+}
+
+export interface NaraSubmissionDraft {
+  bidNoticeNo: string;
+  bidTitle: string;
+  issuingAgency: string;
+  documentType: 'HWPX';
+  sections: NaraDocumentSection[];
+  requiredAttachments: string[];
+  complianceChecklist: string[];
+  writingGuidelines: string[];
+  generatedAt: string;
+}
+
 export interface QualityAssessment {
   complianceScore: number;
   complianceReason: string;

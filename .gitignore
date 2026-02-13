@@ -12,6 +12,26 @@ dist
 dist-ssr
 *.local
 
+# Java / Maven
+**/target/
+**/.classpath
+**/.project
+**/.settings/
+
+# Local debug artifacts (G2B/HWPX experiments)
+_filled-test.hwpx
+_filled-test*.hwpx
+_filled_extract_*/
+_dev_test_fill.js
+_*.json
+_*.txt
+_*.html
+_*.js
+_*.xml
+tmp_*.html
+tmp_*.json
+tmp_*.txt
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

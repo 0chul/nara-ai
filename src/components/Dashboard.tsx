@@ -50,7 +50,18 @@ export const Dashboard: React.FC<Props> = ({ proposals, drafts, pinnedBids = [],
         }
     };
 
-    const getStepLabel = (step: AppStep) => {
+    const getStepLabel = (draft: ProposalDraft) => {
+        const isNaraDraft = draft.files.some(file => file.source === 'nara-bid');
+        if (isNaraDraft) {
+            switch (draft.step) {
+                case AppStep.ANALYSIS: return "입찰 요건 정리";
+                case AppStep.STRATEGY: return "HWPX 본문 작성";
+                case AppStep.PREVIEW: return "제출 패키지 점검";
+                default: return "입찰 문서 준비";
+            }
+        }
+
+        const step = draft.step;
         switch (step) {
             case AppStep.UPLOAD: return "RFP 파일 업로드";
             case AppStep.ANALYSIS: return "요구사항 분석";
@@ -61,8 +72,17 @@ export const Dashboard: React.FC<Props> = ({ proposals, drafts, pinnedBids = [],
         }
     };
 
-    const getStepProgress = (step: AppStep) => {
-        return (step / 6) * 100;
+    const getStepProgress = (draft: ProposalDraft) => {
+        const isNaraDraft = draft.files.some(file => file.source === 'nara-bid');
+        if (isNaraDraft) {
+            switch (draft.step) {
+                case AppStep.ANALYSIS: return 33;
+                case AppStep.STRATEGY: return 66;
+                case AppStep.PREVIEW: return 100;
+                default: return 20;
+            }
+        }
+        return (draft.step / 6) * 100;
     };
 
     const handleDeleteClick = (id: string) => {
@@ -190,7 +210,7 @@ export const Dashboard: React.FC<Props> = ({ proposals, drafts, pinnedBids = [],
                             <div key={draft.id} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm hover:shadow-lg transition-all border-l-4 border-l-blue-500 group relative">
                                 <div className="flex justify-between items-start mb-3">
                                     <span className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-bold bg-blue-50 text-blue-700">
-                                        {getStepLabel(draft.step)}
+                                        {getStepLabel(draft)}
                                     </span>
                                     <span className="text-xs text-slate-400">
                                         {draft.lastUpdated.toLocaleDateString()}
@@ -209,7 +229,7 @@ export const Dashboard: React.FC<Props> = ({ proposals, drafts, pinnedBids = [],
                                 <div className="w-full bg-slate-100 rounded-full h-2 mb-4">
                                     <div
                                         className="bg-blue-600 h-2 rounded-full transition-all duration-1000"
-                                        style={{ width: `${getStepProgress(draft.step)}%` }}
+                                        style={{ width: `${getStepProgress(draft)}%` }}
                                     ></div>
                                 </div>
 

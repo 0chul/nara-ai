@@ -12,6 +12,7 @@ import { KnowledgeHub } from './components/KnowledgeHub';
 import { Dashboard } from './components/Dashboard';
 import { NaraBidBrowser } from './components/NaraBidBrowser';
 import { NaraBidManager } from './components/NaraBidManager';
+import { NaraProposalWorkflow } from './components/NaraProposalWorkflow';
 import { AppStep, RFPMetadata, AnalysisResult, TrendInsight, CourseMatch, AgentConfig, PastProposal, InstructorProfile, ProposalDraft, StrategyOption, BidItem } from './types';
 import { Briefcase, Settings, Database, LayoutDashboard, Search } from 'lucide-react';
 import { convertBidToRFP } from './services/bidTransformer';
@@ -342,6 +343,7 @@ const MOCK_DRAFTS: ProposalDraft[] = [
 ];
 
 type AppView = 'dashboard' | 'wizard' | 'agents' | 'knowledge' | 'nara';
+type WorkflowType = 'enterprise' | 'nara-bid';
 
 const EMPTY_ANALYSIS_RESULT: AnalysisResult = {
   clientName: 'N/A',
@@ -386,6 +388,7 @@ const App: React.FC = () => {
   const [view, setView] = useState<AppView>('dashboard');
   const [drafts, setDrafts] = useState<ProposalDraft[]>(MOCK_DRAFTS);
   const [showNaraBrowser, setShowNaraBrowser] = useState(false);
+  const [workflowType, setWorkflowType] = useState<WorkflowType>('enterprise');
 
   const [agentConfigs, setAgentConfigs] = useState<AgentConfig[]>(DEFAULT_AGENTS);
   const [aiApiKey, setAiApiKey] = useState<string>('');
@@ -449,6 +452,7 @@ const App: React.FC = () => {
   const handleUploadComplete = (files: RFPMetadata[]) => {
     const shouldSave = window.confirm("파일 업로드 완료. 제안서 초안을 저장하고 분석을 진행하시겠습니까?");
 
+    setWorkflowType('enterprise');
     setUploadedFiles(files);
     setCurrentStep(AppStep.ANALYSIS);
 
@@ -520,9 +524,18 @@ const App: React.FC = () => {
 
   const getAgentConfig = (agentId: string) => agentConfigs.find(agent => agent.id === agentId);
   const analysisDataForFlow = analysisResult ?? EMPTY_ANALYSIS_RESULT;
+  const currentNaraFile = uploadedFiles.find(file => file.source === 'nara-bid') ?? null;
+
+  const handleNaraWorkflowStepUpdate = (step: AppStep) => {
+    setCurrentStep(step);
+    if (currentDraftId) {
+      updateDraft(currentDraftId, { step });
+    }
+  };
 
   const startNewProposal = () => {
     // Reset State
+    setWorkflowType('enterprise');
     setUploadedFiles([]);
     setAnalysisResult(null);
     setTrends([]);
@@ -538,6 +551,9 @@ const App: React.FC = () => {
   };
 
   const resumeDraft = (draft: ProposalDraft) => {
+    const isNaraDraft = draft.files.some(file => file.source === 'nara-bid');
+    setWorkflowType(isNaraDraft ? 'nara-bid' : 'enterprise');
+
     // Restore State
     setCurrentDraftId(draft.id);
     setUploadedFiles(draft.files);
@@ -590,12 +606,14 @@ const App: React.FC = () => {
     };
 
     // Set uploaded files and analysis result directly
+    setWorkflowType('nara-bid');
     setUploadedFiles([bidMetadata]);
     setAnalysisResult(rfpData);
-    setCurrentStep(AppStep.RESEARCH); // Skip analysis step
+    setCurrentStep(AppStep.ANALYSIS);
     setShowNaraBrowser(false);
+    setView('wizard');
 
-    const newDraft = createDraft(AppStep.RESEARCH, [bidMetadata], rfpData);
+    const newDraft = createDraft(AppStep.ANALYSIS, [bidMetadata], rfpData);
     setDrafts(prev => [newDraft, ...prev]);
     setCurrentDraftId(newDraft.id);
   };
@@ -701,77 +719,91 @@ const App: React.FC = () => {
           />
         ) : (
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fade-in-up">
-            <StepIndicator currentStep={currentStep} onStepClick={(step) => setCurrentStep(step)} />
+            {workflowType === 'nara-bid' ? (
+              <NaraProposalWorkflow
+                analysisData={analysisDataForFlow}
+                sourceFile={currentNaraFile}
+                agentConfig={getAgentConfig('proposal-assembler')}
+                apiKey={aiApiKey}
+                globalModel={globalModel}
+                onUpdateDraftStep={handleNaraWorkflowStepUpdate}
+                onBackToDashboard={() => setView('dashboard')}
+              />
+            ) : (
+              <>
+                <StepIndicator currentStep={currentStep} onStepClick={(step) => setCurrentStep(step)} />
 
-            <div className="min-h-[500px]">
-              {currentStep === AppStep.UPLOAD && (
-                <FileUploader onUploadComplete={handleUploadComplete} />
-              )}
+                <div className="min-h-[500px]">
+                  {currentStep === AppStep.UPLOAD && (
+                    <FileUploader onUploadComplete={handleUploadComplete} />
+                  )}
 
-              {currentStep === AppStep.ANALYSIS && (
-                <RequirementsReview
-                  files={uploadedFiles}
-                  onConfirm={handleAnalysisConfirm}
-                  onBack={handleBack}
-                  agentConfig={getAgentConfig('rfp-analyst')}
-                  initialData={analysisResult}
-                  apiKey={aiApiKey}
-                  globalModel={globalModel}
-                />
-              )}
+                  {currentStep === AppStep.ANALYSIS && (
+                    <RequirementsReview
+                      files={uploadedFiles}
+                      onConfirm={handleAnalysisConfirm}
+                      onBack={handleBack}
+                      agentConfig={getAgentConfig('rfp-analyst')}
+                      initialData={analysisResult}
+                      apiKey={aiApiKey}
+                      globalModel={globalModel}
+                    />
+                  )}
 
-              {currentStep === AppStep.RESEARCH && (
-                <TrendResearch
-                  analysisData={analysisDataForFlow}
-                  onNext={handleResearchComplete}
-                  onBack={handleBack}
-                  agentConfig={getAgentConfig('trend-researcher')}
-                  initialData={trends}
-                  apiKey={aiApiKey}
-                  globalModel={globalModel}
-                />
-              )}
+                  {currentStep === AppStep.RESEARCH && (
+                    <TrendResearch
+                      analysisData={analysisDataForFlow}
+                      onNext={handleResearchComplete}
+                      onBack={handleBack}
+                      agentConfig={getAgentConfig('trend-researcher')}
+                      initialData={trends}
+                      apiKey={aiApiKey}
+                      globalModel={globalModel}
+                    />
+                  )}
 
-              {currentStep === AppStep.STRATEGY && (
-                <StrategyPlanning
-                  analysisData={analysisDataForFlow}
-                  trendData={trends}
-                  onNext={handleStrategyComplete}
-                  onBack={handleBack}
-                  agentConfig={getAgentConfig('strategy-planner')}
-                  qaConfig={getAgentConfig('qa-agent')}
-                  initialSelection={selectedStrategies}
-                  apiKey={aiApiKey}
-                  globalModel={globalModel}
-                />
-              )}
+                  {currentStep === AppStep.STRATEGY && (
+                    <StrategyPlanning
+                      analysisData={analysisDataForFlow}
+                      trendData={trends}
+                      onNext={handleStrategyComplete}
+                      onBack={handleBack}
+                      agentConfig={getAgentConfig('strategy-planner')}
+                      qaConfig={getAgentConfig('qa-agent')}
+                      initialSelection={selectedStrategies}
+                      apiKey={aiApiKey}
+                      globalModel={globalModel}
+                    />
+                  )}
 
-              {currentStep === AppStep.CURRICULUM && (
-                <CurriculumMatching
-                  analysisData={analysisDataForFlow}
-                  trendData={trends}
-                  selectedStrategies={selectedStrategies}
-                  onNext={handleCurriculumComplete}
-                  onBack={handleBack}
-                  agentConfig={getAgentConfig('curriculum-matcher')}
-                  initialData={matches}
-                  apiKey={aiApiKey}
-                  globalModel={globalModel}
-                />
-              )}
+                  {currentStep === AppStep.CURRICULUM && (
+                    <CurriculumMatching
+                      analysisData={analysisDataForFlow}
+                      trendData={trends}
+                      selectedStrategies={selectedStrategies}
+                      onNext={handleCurriculumComplete}
+                      onBack={handleBack}
+                      agentConfig={getAgentConfig('curriculum-matcher')}
+                      initialData={matches}
+                      apiKey={aiApiKey}
+                      globalModel={globalModel}
+                    />
+                  )}
 
-              {currentStep === AppStep.PREVIEW && (
-                <ProposalPreview
-                  analysis={analysisDataForFlow}
-                  trends={trends}
-                  matches={matches}
-                  agentConfigs={agentConfigs}
-                  apiKey={aiApiKey}
-                  globalModel={globalModel}
-                  onBack={handleBack}
-                />
-              )}
-            </div>
+                  {currentStep === AppStep.PREVIEW && (
+                    <ProposalPreview
+                      analysis={analysisDataForFlow}
+                      trends={trends}
+                      matches={matches}
+                      agentConfigs={agentConfigs}
+                      apiKey={aiApiKey}
+                      globalModel={globalModel}
+                      onBack={handleBack}
+                    />
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
       </main>

@@ -1,5 +1,5 @@
 
-import { AnalysisResult, TrendInsight, CourseMatch, ProposalSlide, QualityAssessment, PastProposal, StrategyOption, StrategyEvaluation } from "../types";
+import { AnalysisResult, TrendInsight, CourseMatch, ProposalSlide, QualityAssessment, PastProposal, StrategyOption, StrategyEvaluation, NaraSubmissionDraft, BidItem } from "../types";
 
 // Note: AI integration has been replaced with dummy data for demonstration purposes.
 
@@ -250,5 +250,90 @@ export const evaluatePastProposal = async (
     totalScore: 88,
     overallComment: "안정적인 수주가 예상되는 우수한 품질의 제안서입니다. 추후 유사 제안 시 참고 가치가 높습니다.",
     assessmentDate: new Date().toISOString()
+  };
+};
+
+/**
+ * Generates an HWPX-oriented draft structure for Nara public bid submissions.
+ * The output is designed for form-driven procurement documents rather than slide proposals.
+ */
+export const generateNaraSubmissionDraft = async (
+  analysis: AnalysisResult,
+  sourceBid?: BidItem,
+  _systemPrompt?: string,
+  _apiKey?: string,
+  _model?: string,
+  _fallbackModel?: string
+): Promise<NaraSubmissionDraft> => {
+  await new Promise(resolve => setTimeout(resolve, 1200));
+
+  const bidNoticeNo = sourceBid ? `${sourceBid.bidNtceNo}-${sourceBid.bidNtceOrd}` : "미확인";
+  const bidTitle = sourceBid?.bidNtceNm || analysis.programName;
+  const issuingAgency = sourceBid?.ntceInsttNm || sourceBid?.dminsttNm || analysis.clientName;
+
+  return {
+    bidNoticeNo,
+    bidTitle,
+    issuingAgency,
+    documentType: "HWPX",
+    generatedAt: new Date().toISOString(),
+    sections: [
+      {
+        id: "company-overview",
+        title: "1. 업체 일반현황",
+        required: true,
+        templateHint: "입찰참가자격 관련 기본정보를 양식 필드 순서대로 기입",
+        content: `${analysis.clientName} 발주 건 기준 제안사 일반현황, 조직/인력, 유사 실적을 공고문 양식에 맞춰 작성합니다.`
+      },
+      {
+        id: "execution-plan",
+        title: "2. 과업 수행계획",
+        required: true,
+        templateHint: "과업범위-일정-산출물-품질관리 순서 권장",
+        content: `주요 목표: ${analysis.objectives.join(", ")}\n수행 일정: ${analysis.schedule}\n수행 장소: ${analysis.location}`
+      },
+      {
+        id: "manpower",
+        title: "3. 투입인력 및 역할",
+        required: true,
+        templateHint: "총괄PM, 실무 담당, 품질 책임자를 구분하여 기재",
+        content: `${analysis.department} 협업 체계를 기준으로 PM/실무/검수 역할 및 투입기간을 명확히 작성합니다.`
+      },
+      {
+        id: "risk-management",
+        title: "4. 리스크 및 대응계획",
+        required: true,
+        templateHint: "지연, 인력변동, 품질저하 시 대응 시나리오 포함",
+        content: "입찰 일정 지연, 협의 지연, 산출물 보완 요청에 대한 대응 절차를 표로 정리합니다."
+      },
+      {
+        id: "price-basis",
+        title: "5. 가격 산출 근거",
+        required: true,
+        templateHint: "직접비/간접비/일반관리비 구분 및 계산식 명시",
+        content: sourceBid?.presmptPrce
+          ? `예정가격(${Number(sourceBid.presmptPrce).toLocaleString()}원) 범위 내에서 항목별 산출 근거를 제시합니다.`
+          : "공고문 가격 조건을 기준으로 항목별 산출 근거와 계산식을 기입합니다."
+      }
+    ],
+    requiredAttachments: [
+      "사업자등록증 사본",
+      "법인등기부등본(해당 시)",
+      "최근 3년 유사실적 증빙",
+      "참여인력 경력증명서 및 재직증명서",
+      "가격제안서(별도 봉함/전자입찰 기준 준수)"
+    ],
+    complianceChecklist: [
+      "공고문 지정 HWPX 양식 준수 여부",
+      "필수 항목 누락 여부(미기재 칸 포함)",
+      "기관 제출 마감시간 및 파일명 규칙 준수",
+      "서명/날인/직인 요구 항목 반영 여부",
+      "첨부서류 원본대조 및 최신본 여부"
+    ],
+    writingGuidelines: [
+      "자유서술보다 공고문 양식의 항목명/순서를 우선합니다.",
+      "정성 표현보다 정량 근거(기간, 인력수, 실적수치)를 사용합니다.",
+      "평가 항목 키워드(수행역량, 이해도, 실현가능성)를 문장에 직접 반영합니다."
+    ]
   };
 };

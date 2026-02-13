@@ -1,6 +1,37 @@
 import { supabase } from './supabase';
 import { BidItem } from '../types';
 
+let supportsPinnedColumn: boolean | null = null;
+
+const isMissingPinnedColumnError = (error: any): boolean => {
+  const message = String(error?.message || '');
+  return message.includes('isPinned') && message.includes('schema cache');
+};
+
+const stripPinnedField = (item: BidItem): Omit<BidItem, 'isPinned'> => {
+  const { isPinned, ...rest } = item;
+  return rest;
+};
+
+const detectPinnedColumnSupport = async (): Promise<boolean> => {
+  if (supportsPinnedColumn !== null) {
+    return supportsPinnedColumn;
+  }
+
+  const { error } = await supabase
+    .from('bids')
+    .select('isPinned')
+    .limit(1);
+
+  if (error && isMissingPinnedColumnError(error)) {
+    supportsPinnedColumn = false;
+    return false;
+  }
+
+  supportsPinnedColumn = true;
+  return true;
+};
+
 // Helper to save items (Upsert to Supabase)
 export const saveBids = async (items: BidItem[]) => {
   if (!items || items.length === 0) return;
@@ -14,10 +45,23 @@ export const saveBids = async (items: BidItem[]) => {
     });
 
     const uniqueItems = Array.from(uniqueItemsMap.values());
+    const canUsePinnedColumn = await detectPinnedColumnSupport();
+    const payload = canUsePinnedColumn
+      ? uniqueItems
+      : uniqueItems.map(stripPinnedField);
 
-    const { error } = await supabase
+    let { error } = await supabase
       .from('bids')
-      .upsert(uniqueItems, { onConflict: 'bidNtceNo, bidNtceOrd' });
+      .upsert(payload as any[], { onConflict: 'bidNtceNo, bidNtceOrd' });
+
+    if (error && isMissingPinnedColumnError(error) && canUsePinnedColumn) {
+      supportsPinnedColumn = false;
+      const fallbackPayload = uniqueItems.map(stripPinnedField);
+      const retry = await supabase
+        .from('bids')
+        .upsert(fallbackPayload as any[], { onConflict: 'bidNtceNo, bidNtceOrd' });
+      error = retry.error;
+    }
 
     if (error) throw error;
     console.log(`[Supabase] Saved ${uniqueItems.length} unique items.`);
@@ -30,12 +74,16 @@ export const saveBids = async (items: BidItem[]) => {
 // Helper to get all items sorted by pinned first, then date descending
 export const getAllBids = async (): Promise<BidItem[]> => {
   try {
-    // Try sorting first
-    const { data, error } = await supabase
+    const canUsePinnedColumn = await detectPinnedColumnSupport();
+    const baseQuery = supabase
       .from('bids')
-      .select('*')
-      .order('isPinned', { ascending: false })
-      .order('bidNtceDt', { ascending: false });
+      .select('*');
+
+    const query = canUsePinnedColumn
+      ? baseQuery.order('isPinned', { ascending: false }).order('bidNtceDt', { ascending: false })
+      : baseQuery.order('bidNtceDt', { ascending: false });
+
+    const { data, error } = await query;
 
     if (error) {
       console.warn("[Supabase] Sorted fetch failed, trying unfiltered...", error);
@@ -46,10 +94,19 @@ export const getAllBids = async (): Promise<BidItem[]> => {
         .limit(100);
 
       if (rawError) throw rawError;
-      return rawData || [];
+      const normalizedRaw = (rawData || []).map((item: any) => ({
+        ...item,
+        isPinned: Boolean(item.isPinned)
+      }));
+      return normalizedRaw;
     }
 
-    return data || [];
+    const normalizedData = (data || []).map((item: any) => ({
+      ...item,
+      isPinned: Boolean(item.isPinned)
+    }));
+
+    return normalizedData;
   } catch (error) {
     console.error("[Supabase] Failed to retrieve bids:", error);
     throw error; // Let the caller handle the UI alert
@@ -59,6 +116,11 @@ export const getAllBids = async (): Promise<BidItem[]> => {
 // Helper to toggle pin status
 export const toggleBidPin = async (bidNo: string, bidOrd: string, isPinned: boolean) => {
   try {
+    const canUsePinnedColumn = await detectPinnedColumnSupport();
+    if (!canUsePinnedColumn) {
+      throw new Error("DB에 isPinned 컬럼이 없어 핀 기능을 사용할 수 없습니다.");
+    }
+
     const { error } = await supabase
       .from('bids')
       .update({ isPinned })
@@ -141,7 +203,12 @@ export const testDbConnection = async (): Promise<{ success: boolean, message: s
       return { success: false, message: `DB 오류: ${error.message} (코드: ${error.code})` };
     }
 
-    return { success: true, message: `연결 성공! (현재 DB에 ${count || 0}건의 공고가 저장되어 있습니다.)` };
+    const canUsePinnedColumn = await detectPinnedColumnSupport();
+    const pinSupportText = canUsePinnedColumn
+      ? '핀 컬럼(isPinned) 사용 가능'
+      : '핀 컬럼(isPinned) 없음 - 조회/저장은 가능, 핀 기능은 제한됨';
+
+    return { success: true, message: `연결 성공! (현재 DB에 ${count || 0}건의 공고가 저장되어 있습니다. / ${pinSupportText})` };
   } catch (error: any) {
     return { success: false, message: `시스템 오류: ${error.message}` };
   }
