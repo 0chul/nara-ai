@@ -60,6 +60,7 @@ query params:
 ## Field Mapping Policy
 - 1차: 본문 토큰 `{{fieldName}}` 문자열 치환
 - 2차: HWPX 필드명(`FieldBegin.name`) 일치 항목에 값 삽입
+- 3차: 표(Table) 내 라벨 셀(예: `공고명`, `사업명`, `공고번호`, `발주기관` 등)을 탐색해, 오른쪽(또는 아래) 값 셀의 빈 칸/placeholder에 값 삽입
 
 ## Notes
 - 현재 채우기 엔드포인트는 `.hwpx`만 직접 지원합니다.
