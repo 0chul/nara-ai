@@ -1,6 +1,6 @@
-
-import React, { useState, useEffect } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { StepIndicator } from './components/StepIndicator';
+import { Session } from '@supabase/supabase-js';
 import { FileUploader } from './components/FileUploader';
 import { RequirementsReview } from './components/RequirementsReview';
 import { TrendResearch } from './components/TrendResearch';
@@ -12,337 +12,113 @@ import { KnowledgeHub } from './components/KnowledgeHub';
 import { Dashboard } from './components/Dashboard';
 import { NaraBidBrowser } from './components/NaraBidBrowser';
 import { NaraBidManager } from './components/NaraBidManager';
-import { NaraProposalWorkflow } from './components/NaraProposalWorkflow';
-import { AppStep, RFPMetadata, AnalysisResult, TrendInsight, CourseMatch, AgentConfig, PastProposal, InstructorProfile, ProposalDraft, StrategyOption, BidItem } from './types';
-import { Briefcase, Settings, Database, LayoutDashboard, Search } from 'lucide-react';
+import { NaraStepIndicator } from './components/NaraStepIndicator';
+import { NaraRequirementWorkflow } from './components/NaraRequirementWorkflow';
+import { NaraGenerateWorkflow } from './components/NaraGenerateWorkflow';
+import { ReportPortfolio } from './components/reports/ReportPortfolio';
+import {
+  AppStep,
+  RFPMetadata,
+  AnalysisResult,
+  TrendInsight,
+  CourseMatch,
+  AgentConfig,
+  PastProposal,
+  InstructorProfile,
+  ProposalDraft,
+  StrategyOption,
+  BidItem,
+  UserProfile,
+  BidRequirementSession,
+  NaraWorkflowStage
+} from './types';
+import { Briefcase, Database, FileText, LayoutDashboard, LogOut, Search, Settings, ShieldAlert, User } from 'lucide-react';
 import { convertBidToRFP } from './services/bidTransformer';
 import { getAllBids } from './services/naraDb';
+import { ensureUserProfile, getCurrentSession, onAuthStateChanged, signInWithPassword, signOut } from './services/authService';
+import { loadWorkspace, saveWorkspace } from './services/userWorkspace';
+import { migrateWorkspaceToSupabaseOnce, mirrorWorkspaceToSupabase } from './services/workflowDraftService';
+import { mapNaraRequirementsToAnalysis } from './services/naraAnalysisMapper';
+import { loadBidRequirementSessionLocal, loadLatestBidRequirementSession } from './services/naraBidRequirementService';
+
+const DEFAULT_MODEL = 'gemini-3-flash-preview';
+const ENV_GEMINI_API_KEY = String((import.meta as any)?.env?.VITE_GEMINI_API_KEY ?? __APP_ENV_GEMINI_API_KEY__).trim();
+const ENV_NARA_API_KEY = String((import.meta as any)?.env?.VITE_NARA_API_KEY ?? __APP_ENV_NARA_API_KEY__).trim();
+const ENV_NARA_SHOULD_ENCODE = String((import.meta as any)?.env?.VITE_NARA_SHOULD_ENCODE_KEY ?? __APP_ENV_NARA_SHOULD_ENCODE_KEY__).trim();
+
+const parseBooleanEnv = (value: string): boolean => {
+  const normalized = value.trim().toLowerCase();
+  return ['true', '1', 'yes', 'on'].includes(normalized);
+};
 
 const DEFAULT_AGENTS: AgentConfig[] = [
   {
     id: 'rfp-analyst',
-    name: 'RFP 전문 분석가',
-    role: '고객의 RFP 문서를 분석하여 핵심 요구사항, 일정, 교육 대상 등을 구조화된 데이터로 추출합니다.',
-    model: 'gemini-2.5-flash',
+    name: 'RFP Analyst',
+    role: 'Extract grounded program requirements from uploaded RFP documents.',
+    model: DEFAULT_MODEL,
     temperature: 0.2,
-    systemPrompt: 'You are an expert RFP analyst. Extract key information from the provided proposal request document. Identify Program Name, Objectives, Target Audience, Schedule, and requested Modules.',
-    guardrails: ['Do not make up information not present in the text.', 'Flag any ambiguous dates.']
+    systemPrompt:
+      'You are an expert RFP analyst. Extract key information from the provided proposal request document. Identify Program Name, Objectives, Target Audience, Schedule, and requested Modules.',
+    guardrails: ['Do not invent facts not present in the source text.', 'Flag ambiguous schedules and dates.']
   },
   {
     id: 'trend-researcher',
-    name: '트렌드 인사이트 연구원',
-    role: '교육 주제와 관련된 최신 HRD 및 비즈니스 트렌드를 조사하여 제안서에 포함될 인사이트를 제공합니다.',
-    model: 'gemini-2.5-flash',
-    temperature: 0.7,
-    systemPrompt: 'Analyze the provided education topics and generate 3 key global trends relevant to HRD and Business Leadership. Provide sources.',
-    guardrails: ['Use only sources from the last 3 years.', 'Focus on enterprise-level trends.']
+    name: 'Trend Researcher',
+    role: 'Find recent market and HRD trends relevant to the program topic.',
+    model: DEFAULT_MODEL,
+    temperature: 0.6,
+    systemPrompt:
+      'Analyze provided topics and generate recent enterprise-relevant trends with concise sources.',
+    guardrails: ['Prefer recent sources (within 3 years).', 'Avoid generic, unsupported claims.']
   },
   {
     id: 'strategy-planner',
-    name: '제안 전략 기획자',
-    role: 'RFP와 트렌드를 기반으로 차별화된 제안 컨셉과 전략 방향을 3가지 옵션으로 도출합니다.',
-    model: 'gemini-2.5-flash',
-    temperature: 0.8,
-    systemPrompt: 'Based on the analysis and trends, generate 3 distinct strategic options (Tech-driven, Culture-focused, Practical) for the proposal.',
-    guardrails: ['Ensure strategies are distinct from each other.', 'Align with client industry.']
+    name: 'Strategy Planner',
+    role: 'Generate distinct proposal strategy options from analysis and trends.',
+    model: DEFAULT_MODEL,
+    temperature: 0.7,
+    systemPrompt:
+      'Generate three distinct proposal strategies (technology, culture, practical execution) aligned to client context.',
+    guardrails: ['Strategies must be distinct.', 'Align to client industry and constraints.']
   },
   {
     id: 'curriculum-matcher',
-    name: '교육 과정 매칭 컨설턴트',
-    role: '선택된 전략에 맞춰 가장 적합한 내부 교육 과정과 강사를 매칭하고 추천 근거를 작성합니다.',
-    model: 'gemini-2.5-flash',
-    temperature: 0.4,
-    systemPrompt: 'You are an expert curriculum planner. Match the following required modules with the best available internal courses based on the selected strategy. Provide a match score and justification.',
-    guardrails: ['Prioritize internal full-time instructors.', 'Match score must be based on keyword relevance.']
+    name: 'Curriculum Matcher',
+    role: 'Map required modules to curriculum and instructors.',
+    model: DEFAULT_MODEL,
+    temperature: 0.3,
+    systemPrompt:
+      'Match required modules to practical courses and instructor profiles. Return score and rationale for each match.',
+    guardrails: ['Ensure each module has at least one instructor.', 'Provide concrete matching rationale.']
   },
   {
     id: 'proposal-assembler',
-    name: '제안서 작성 전문 에디터',
-    role: '분석된 정보와 생성된 콘텐츠를 바탕으로 전문적인 PPT 제안서 구조와 문구를 생성합니다.',
-    model: 'gemini-2.5-flash',
-    temperature: 0.5,
-    systemPrompt: 'Generate professional slide content for a corporate training proposal. Use persuasive language and structured formatting.',
-    guardrails: ['Ensure tone is professional and polite.', 'Include a clear call to action.']
+    name: 'Proposal Assembler',
+    role: 'Draft structured proposal slide content.',
+    model: DEFAULT_MODEL,
+    temperature: 0.4,
+    systemPrompt:
+      'Generate professional proposal slide draft content using concise, persuasive business language.',
+    guardrails: ['Keep language professional.', 'Use clear section structure.']
   },
   {
     id: 'qa-agent',
-    name: '제안 품질 심사위원',
-    role: '전략 방향의 적절성을 사전 평가하고, 최종 제안서의 품질을 심사합니다.',
-    model: 'gemini-2.5-flash',
+    name: 'QA Auditor',
+    role: 'Evaluate proposal quality and risk before finalization.',
+    model: DEFAULT_MODEL,
     temperature: 0.1,
-    systemPrompt: 'You are a strict Quality Assurance auditor for training proposals. Evaluate the proposal/strategy based on: 1. Data Compliance (adherence to RFP), 2. Instructor Expertise Match, 3. Industry Fit. Provide scores (0-100) and critical reasoning.',
-    guardrails: ['Be objective and critical.', 'Do not hallucinate scores.', 'Provide constructive feedback.']
+    systemPrompt:
+      'Evaluate proposal quality objectively on compliance, expertise fit, and industry fit. Return scores and rationale.',
+    guardrails: ['Be critical and objective.', 'Do not hallucinate data.']
   }
 ];
 
-// Mock Data for Knowledge Hub & Dashboard with Dummy QA Data
-const MOCK_PROPOSALS: PastProposal[] = [
-  {
-    id: 'p1',
-    title: '2025 삼성전자 신입사원 입문교육 제안',
-    clientName: '삼성전자',
-    industry: '제조/전자',
-    date: '2024-03-20',
-    tags: ['신입사원', '비전내재화', '팀빌딩'],
-    fileName: '2025_SE_Rookie_Draft.pptx',
-    status: 'Review',
-    amount: '₩120,000,000',
-    progress: 80,
-    qualityAssessment: {
-      complianceScore: 95,
-      complianceReason: "RFP의 모든 핵심 요구사항을 완벽하게 충족하며, 신입사원 교육의 목적과 부합함.",
-      instructorExpertiseScore: 88,
-      instructorExpertiseReason: "MZ세대 소통 전문가 위주로 강사진이 구성되어 적절함.",
-      industryMatchScore: 92,
-      industryMatchReason: "전자/제조 업계의 최신 트렌드와 용어를 적절히 반영함.",
-      totalScore: 91,
-      overallComment: "매우 우수한 제안서입니다. 수주 가능성이 높습니다."
-    }
-  },
-  {
-    id: 'p2',
-    title: 'KB국민은행 디지털 리더십 아카데미',
-    clientName: 'KB국민은행',
-    industry: '금융',
-    date: '2024-03-15',
-    tags: ['리더십', 'DT', '금융트렌드'],
-    fileName: 'KB_Digital_Leadership_v2.pptx',
-    status: 'Draft',
-    amount: '₩85,000,000',
-    progress: 45,
-    qualityAssessment: {
-      complianceScore: 78,
-      complianceReason: "디지털 리더십 관련 핵심 모듈은 포함되었으나, 일부 실습 과정이 RFP 요구사항보다 축소됨.",
-      instructorExpertiseScore: 92,
-      instructorExpertiseReason: "금융권 DT 프로젝트 경험이 풍부한 강사진으로 구성됨.",
-      industryMatchScore: 85,
-      industryMatchReason: "금융 트렌드를 반영한 사례 연구가 적절히 포함됨.",
-      totalScore: 85,
-      overallComment: "강사진의 전문성은 뛰어나나, 실습 시간 확보를 위한 커리큘럼 조정이 필요함."
-    }
-  },
-  {
-    id: 'p3',
-    title: 'SK텔레콤 AI-Driven Work Way 워크숍',
-    clientName: 'SK텔레콤',
-    industry: '통신/IT',
-    date: '2024-03-10',
-    tags: ['AI활용', '업무효율화', '애자일'],
-    fileName: 'SKT_AI_Work.pdf',
-    status: 'Submitted',
-    amount: '₩55,000,000',
-    progress: 100,
-    qualityAssessment: {
-      complianceScore: 82,
-      complianceReason: "AI 활용 도구에 대한 구체적인 명시가 다소 부족함.",
-      instructorExpertiseScore: 95,
-      instructorExpertiseReason: "현업 AI 개발자 출신 강사 배치로 전문성이 매우 높음.",
-      industryMatchScore: 88,
-      industryMatchReason: "통신 업계의 데이터를 예시로 활용하여 현장감이 뛰어남.",
-      totalScore: 88,
-      overallComment: "강사의 전문성이 돋보이나, 실습 도구에 대한 구체적 설명 보완이 필요함."
-    }
-  },
-  {
-    id: 'p4',
-    title: 'LG화학 중간관리자 성과관리 과정',
-    clientName: 'LG화학',
-    industry: '화학/제조',
-    date: '2024-02-28',
-    tags: ['성과관리', '코칭', '피드백'],
-    fileName: 'LG_Chem_PM.pptx',
-    status: 'Won',
-    amount: '₩150,000,000',
-    progress: 100,
-    qualityAssessment: {
-      complianceScore: 90,
-      complianceReason: "성과관리 프로세스에 대한 고객사 내부 규정을 잘 반영함.",
-      instructorExpertiseScore: 85,
-      instructorExpertiseReason: "리더십 코칭 자격증 보유 강사진으로 구성됨.",
-      industryMatchScore: 78,
-      industryMatchReason: "제조업 특유의 수직적 문화를 고려한 코칭 스킬 제안이 조금 더 필요함.",
-      totalScore: 84,
-      overallComment: "안정적인 제안서이나, 산업 특화 시나리오가 조금 더 보강되면 좋겠습니다."
-    }
-  },
-  {
-    id: 'p5',
-    title: '현대자동차 글로벌 역량 강화',
-    clientName: '현대자동차',
-    industry: '제조/자동차',
-    date: '2024-01-15',
-    tags: ['글로벌', '이문화', '영어'],
-    fileName: 'HMC_Global_Biz.pptx',
-    status: 'Completed',
-    amount: '₩90,000,000',
-    progress: 100,
-    qualityAssessment: {
-      complianceScore: 88,
-      complianceReason: "글로벌 비즈니스 매너 교육 요청사항을 충실히 반영함.",
-      instructorExpertiseScore: 90,
-      instructorExpertiseReason: "원어민 수준의 강사와 해외 주재원 경험 보유자 매칭.",
-      industryMatchScore: 85,
-      industryMatchReason: "자동차 산업의 글로벌 공급망 이슈를 케이스로 활용함.",
-      totalScore: 87,
-      overallComment: "무난하고 깔끔한 제안서입니다."
-    }
-  },
-  // Moved from MOCK_DRAFTS
-  {
-    id: 'p6',
-    title: '2025 마케팅 역량 강화 과정',
-    clientName: "CJ제일제당",
-    industry: "식품/유통",
-    date: '2024-05-20',
-    tags: ["Digital Marketing", "Data Driven", "Branding"],
-    fileName: 'CJ_Marketing_Competency.pdf',
-    status: 'Completed',
-    amount: '₩70,000,000',
-    progress: 100,
-    qualityAssessment: {
-      complianceScore: 85,
-      complianceReason: "실무 사례 위주 진행 요건을 잘 반영하였습니다.",
-      instructorExpertiseScore: 82,
-      instructorExpertiseReason: "마케팅 전문가는 훌륭하나, 식품 산업 관련 경험이 조금 더 보강되면 좋습니다.",
-      industryMatchScore: 90,
-      industryMatchReason: "CJ 그룹의 톤앤매너를 잘 유지하고 있습니다.",
-      totalScore: 86,
-      overallComment: "무난하게 승인될 것으로 보입니다."
-    }
-  },
-  {
-    id: 'p7',
-    title: '현장 안전 리더십 강화',
-    clientName: "롯데케미칼",
-    industry: "화학/제조",
-    date: '2024-05-19',
-    tags: ["Safety", "Leadership", "Risk Management"],
-    fileName: 'Lotte_Chemical_Safety_Leadership.pdf',
-    status: 'Submitted',
-    amount: '₩45,000,000',
-    progress: 100,
-    qualityAssessment: {
-      complianceScore: 95,
-      complianceReason: "안전 수칙 및 법규 반영이 철저합니다.",
-      instructorExpertiseScore: 92,
-      instructorExpertiseReason: "안전 관리 자격 보유 강사진이 배정되었습니다.",
-      industryMatchScore: 95,
-      industryMatchReason: "화학 플랜트 현장 이해도가 높습니다.",
-      totalScore: 94,
-      overallComment: "매우 우수한 안전 교육 제안서입니다."
-    }
-  }
-];
+const EMPTY_PROPOSALS: PastProposal[] = [];
+const EMPTY_INSTRUCTORS: InstructorProfile[] = [];
+const EMPTY_DRAFTS: ProposalDraft[] = [];
 
-const MOCK_INSTRUCTORS: InstructorProfile[] = [
-  { id: 'i1', name: '김철수 수석', position: '리더십 센터장', expertise: ['리더십', '코칭', '조직문화'], bio: '전 삼성인력개발원 교수, 리더십 코칭 15년 경력', email: 'cs.kim@expert.co.kr' },
-  { id: 'i2', name: '이영희 이사', position: 'DT 교육팀장', expertise: ['디지털 트렌드', '데이터 리터러시', '생성형 AI'], bio: '카이스트 공학박사, 빅데이터 분석 전문가', email: 'yh.lee@expert.co.kr' },
-  { id: 'i3', name: '박민수 전문위원', position: '커뮤니케이션 파트장', expertise: ['소통', '협상', '갈등관리'], bio: '국제공인 협상 전문가, 커뮤니케이션 저서 3권 집필', email: 'ms.park@expert.co.kr' },
-  { id: 'i4', name: '최지혜 컨설턴트', position: 'CS 교육팀', expertise: ['고객경험(CX)', '서비스 마인드', '감정노동 관리'], bio: '전 항공사 승무원 교육 담당', email: 'jh.choi@expert.co.kr' },
-];
-
-const MOCK_DRAFTS: ProposalDraft[] = [
-  {
-    id: 'draft-dummy-1',
-    lastUpdated: new Date(Date.now() - 1000 * 60 * 30), // 30 mins ago
-    step: AppStep.ANALYSIS,
-    files: [
-      { fileName: '2025_Global_Leadership_RFP.pdf', fileSize: '4.2 MB', uploadDate: '2024-05-21' },
-      { fileName: 'Reference_Material.pdf', fileSize: '1.8 MB', uploadDate: '2024-05-21' }
-    ],
-    analysis: null,
-    trends: [],
-    selectedStrategies: [],
-    matches: []
-  },
-  // Removed CJ & Lotte (Moved to MOCK_PROPOSALS)
-  {
-    id: 'draft-dummy-4',
-    lastUpdated: new Date(Date.now() - 1000 * 60 * 60 * 24), // 1 day ago
-    step: AppStep.PREVIEW,
-    files: [{ fileName: 'Hanwha_Life_Finance_DT.pdf', fileSize: '2.8 MB', uploadDate: '2024-05-18' }],
-    analysis: {
-      clientName: "한화생명",
-      industry: "금융/보험",
-      department: "인재개발팀",
-      programName: "금융 데이터 리터러시 과정",
-      objectives: ["데이터 활용 능력 향상", "DT 마인드셋 함양", "실무 적용 프로젝트"],
-      targetAudience: "전사 임직원 100명",
-      schedule: "2025년 9월",
-      location: "한화생명 연수원",
-      modules: ["Data Literacy Foundation", "AI Utilization in Finance", "DT Project Workshop"],
-      specialRequests: "금융 데이터 분석 실습 포함"
-    },
-    trends: [],
-    selectedStrategies: [],
-    matches: []
-  },
-  {
-    id: 'draft-dummy-5',
-    lastUpdated: new Date(Date.now() - 1000 * 60 * 60 * 48), // 2 days ago
-    step: AppStep.PREVIEW,
-    files: [{ fileName: 'GS_Retail_CS_Master.pdf', fileSize: '1.5 MB', uploadDate: '2024-05-15' }],
-    analysis: {
-      clientName: "GS리테일",
-      industry: "유통/서비스",
-      department: "CS기획팀",
-      programName: "CS 마스터 클래스 2025",
-      objectives: ["고객 응대 스킬 고도화", "VOC 관리 및 분석", "감정노동 관리"],
-      targetAudience: "CS 매니저 및 점장",
-      schedule: "2025년 6월",
-      location: "GS타워 대강당",
-      modules: ["Advanced CS Mind", "Communication Skill", "Stress Management"],
-      specialRequests: "롤플레잉 위주 구성"
-    },
-    trends: [],
-    selectedStrategies: [],
-    matches: []
-  },
-  {
-    id: 'draft-dummy-6',
-    lastUpdated: new Date(Date.now() - 1000 * 60 * 60 * 3), // 3 hours ago
-    step: AppStep.PREVIEW,
-    files: [{ fileName: 'Mobis_Autonomous_Safety.pdf', fileSize: '6.2 MB', uploadDate: '2024-05-22' }],
-    analysis: {
-      clientName: "현대모비스",
-      industry: "자동차/부품",
-      department: "안전보건팀",
-      programName: "자율주행 연구원 안전 의식 고취",
-      objectives: ["연구소 안전 수칙 준수", "실험실 위험 관리", "안전 심리 진단"],
-      targetAudience: "R&D 연구원 200명",
-      schedule: "2025년 8월",
-      location: "마북 연구소",
-      modules: ["Lab Safety Protocol", "Behavior Based Safety", "Psychological Safety"],
-      specialRequests: "연구원 특성 고려한 논리적 접근 필요"
-    },
-    trends: [],
-    selectedStrategies: [],
-    matches: []
-  },
-  {
-    id: 'draft-dummy-7',
-    lastUpdated: new Date(Date.now() - 1000 * 60 * 15), // 15 mins ago
-    step: AppStep.ANALYSIS,
-    files: [{ fileName: 'POSCO_ESG_Workshop.docx', fileSize: '1.2 MB', uploadDate: '2024-05-22' }],
-    analysis: {
-      clientName: "POSCO",
-      industry: "철강/제조",
-      department: "ESG경영실",
-      programName: "공급망 ESG 실사 대응 워크숍",
-      objectives: ["협력사 ESG 평가 대응", "탄소중립 로드맵 이해"],
-      targetAudience: "구매/조달 담당자",
-      schedule: "2025년 10월",
-      location: "포항 인재창조원",
-      modules: ["Global ESG Standards", "Supply Chain Due Diligence"],
-      specialRequests: "EU 공급망 실사법 위주"
-    },
-    trends: [],
-    selectedStrategies: [],
-    matches: []
-  }
-];
-
-type AppView = 'dashboard' | 'wizard' | 'agents' | 'knowledge' | 'nara';
+type AppView = 'dashboard' | 'wizard' | 'agents' | 'knowledge' | 'nara' | 'reports';
 type WorkflowType = 'enterprise' | 'nara-bid';
 
 const EMPTY_ANALYSIS_RESULT: AnalysisResult = {
@@ -358,14 +134,46 @@ const EMPTY_ANALYSIS_RESULT: AnalysisResult = {
   specialRequests: ''
 };
 
-const createDraft = (
-  step: AppStep,
-  files: RFPMetadata[],
-  analysis: AnalysisResult | null = null
-): ProposalDraft => ({
+const NARA_STAGE_ORDER: NaraWorkflowStage[] = [
+  NaraWorkflowStage.REQUIREMENTS_EXTRACT,
+  NaraWorkflowStage.REQUIREMENTS_APPROVAL,
+  NaraWorkflowStage.ANALYSIS_REVIEW,
+  NaraWorkflowStage.RESEARCH,
+  NaraWorkflowStage.STRATEGY,
+  NaraWorkflowStage.CURRICULUM,
+  NaraWorkflowStage.GENERATE_PREVIEW
+];
+
+const naraStageToAppStep = (stage: NaraWorkflowStage): AppStep => {
+  switch (stage) {
+    case NaraWorkflowStage.RESEARCH:
+      return AppStep.RESEARCH;
+    case NaraWorkflowStage.STRATEGY:
+      return AppStep.STRATEGY;
+    case NaraWorkflowStage.CURRICULUM:
+      return AppStep.CURRICULUM;
+    case NaraWorkflowStage.GENERATE_PREVIEW:
+      return AppStep.PREVIEW;
+    default:
+      return AppStep.ANALYSIS;
+  }
+};
+
+const legacyAppStepToNaraStage = (step: AppStep): NaraWorkflowStage => {
+  if (step <= AppStep.ANALYSIS) return NaraWorkflowStage.REQUIREMENTS_EXTRACT;
+  if (step === AppStep.RESEARCH) return NaraWorkflowStage.RESEARCH;
+  if (step === AppStep.STRATEGY) return NaraWorkflowStage.STRATEGY;
+  if (step === AppStep.CURRICULUM) return NaraWorkflowStage.CURRICULUM;
+  return NaraWorkflowStage.GENERATE_PREVIEW;
+};
+
+const createDraft = (step: AppStep, files: RFPMetadata[], analysis: AnalysisResult | null = null): ProposalDraft => ({
   id: Date.now().toString(),
   lastUpdated: new Date(),
   step,
+  naraStage: undefined,
+  naraAnalysisId: undefined,
+  naraRequirementReady: undefined,
   files,
   analysis,
   trends: [],
@@ -376,7 +184,6 @@ const createDraft = (
 const App: React.FC = () => {
   const [currentStep, setCurrentStep] = useState<AppStep>(AppStep.UPLOAD);
 
-  // Active Proposal Data
   const [currentDraftId, setCurrentDraftId] = useState<string | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<RFPMetadata[]>([]);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
@@ -384,38 +191,243 @@ const App: React.FC = () => {
   const [selectedStrategies, setSelectedStrategies] = useState<StrategyOption[]>([]);
   const [matches, setMatches] = useState<CourseMatch[]>([]);
 
-  // Global App State
   const [view, setView] = useState<AppView>('dashboard');
-  const [drafts, setDrafts] = useState<ProposalDraft[]>(MOCK_DRAFTS);
+  const [drafts, setDrafts] = useState<ProposalDraft[]>(EMPTY_DRAFTS);
   const [showNaraBrowser, setShowNaraBrowser] = useState(false);
   const [workflowType, setWorkflowType] = useState<WorkflowType>('enterprise');
+  const [currentNaraStage, setCurrentNaraStage] = useState<NaraWorkflowStage>(NaraWorkflowStage.REQUIREMENTS_EXTRACT);
+  const [naraRequirementSession, setNaraRequirementSession] = useState<BidRequirementSession | null>(null);
+  const [naraStageError, setNaraStageError] = useState<string | null>(null);
 
   const [agentConfigs, setAgentConfigs] = useState<AgentConfig[]>(DEFAULT_AGENTS);
-  const [aiApiKey, setAiApiKey] = useState<string>('');
-  const [naraApiKey, setNaraApiKey] = useState<string>('');
-  const [globalModel, setGlobalModel] = useState<string>('gemini-2.5-flash');
+  const [aiApiKey, setAiApiKey] = useState<string>(ENV_GEMINI_API_KEY);
+  const [naraApiKey, setNaraApiKey] = useState<string>(ENV_NARA_API_KEY);
+  const [globalModel, setGlobalModel] = useState<string>(DEFAULT_MODEL);
+  const effectiveAiApiKey = aiApiKey || ENV_GEMINI_API_KEY;
+  const effectiveNaraApiKey = naraApiKey || ENV_NARA_API_KEY;
 
-  const [pastProposals, setPastProposals] = useState<PastProposal[]>(MOCK_PROPOSALS);
-  const [instructors, setInstructors] = useState<InstructorProfile[]>(MOCK_INSTRUCTORS);
-  const [shouldEncodeKey, setShouldEncodeKey] = useState<boolean>(false);
+  const [pastProposals, setPastProposals] = useState<PastProposal[]>(EMPTY_PROPOSALS);
+  const [instructors, setInstructors] = useState<InstructorProfile[]>(EMPTY_INSTRUCTORS);
+  const [shouldEncodeKey, setShouldEncodeKey] = useState<boolean>(parseBooleanEnv(ENV_NARA_SHOULD_ENCODE));
   const [pinnedBids, setPinnedBids] = useState<BidItem[]>([]);
+  const [authSession, setAuthSession] = useState<Session | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [workspaceReady, setWorkspaceReady] = useState<boolean>(false);
+  const [loginEmail, setLoginEmail] = useState<string>('');
+  const [loginPassword, setLoginPassword] = useState<string>('');
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [loggingIn, setLoggingIn] = useState<boolean>(false);
 
-  // Fetch pinned bids from Supabase
   const loadPinnedBids = async () => {
+    if (!authSession?.user?.id) {
+      setPinnedBids([]);
+      return;
+    }
     try {
       const allBids = await getAllBids();
-      const pinned = allBids.filter(b => b.isPinned);
-      setPinnedBids(pinned);
+      setPinnedBids(allBids.filter(item => item.isPinned));
     } catch (error) {
-      console.error("Failed to load pinned bids:", error);
+      console.error('Failed to load pinned bids:', error);
     }
   };
 
+  const resetUserWorkspaceState = () => {
+    setDrafts(EMPTY_DRAFTS);
+    setPastProposals(EMPTY_PROPOSALS);
+    setInstructors(EMPTY_INSTRUCTORS);
+    setAgentConfigs(DEFAULT_AGENTS);
+    setGlobalModel(DEFAULT_MODEL);
+    setAiApiKey(ENV_GEMINI_API_KEY);
+    setNaraApiKey(ENV_NARA_API_KEY);
+    setShouldEncodeKey(parseBooleanEnv(ENV_NARA_SHOULD_ENCODE));
+    setCurrentDraftId(null);
+    setUploadedFiles([]);
+    setAnalysisResult(null);
+    setTrends([]);
+    setSelectedStrategies([]);
+    setMatches([]);
+    setCurrentStep(AppStep.UPLOAD);
+    setWorkflowType('enterprise');
+    setCurrentNaraStage(NaraWorkflowStage.REQUIREMENTS_EXTRACT);
+    setNaraRequirementSession(null);
+    setNaraStageError(null);
+    setView('dashboard');
+    setShowNaraBrowser(false);
+    setPinnedBids([]);
+  };
+
   useEffect(() => {
-    loadPinnedBids();
+    let mounted = true;
+
+    const syncProfile = async (session: Session | null) => {
+      if (!mounted) {
+        return;
+      }
+
+      setAuthSession(session);
+      setWorkspaceReady(false);
+      if (!session?.user?.id) {
+        setUserProfile(null);
+        resetUserWorkspaceState();
+        setAuthLoading(false);
+        return;
+      }
+
+      try {
+        const profile = await ensureUserProfile(session.user.id, session.user.email);
+        if (mounted) {
+          setUserProfile(profile);
+        }
+      } catch (error) {
+        console.error('Failed to load profile:', error);
+        if (mounted) {
+          setUserProfile(null);
+        }
+      } finally {
+        if (mounted) {
+          setAuthLoading(false);
+        }
+      }
+    };
+
+    const bootstrap = async () => {
+      try {
+        const session = await getCurrentSession();
+        await syncProfile(session);
+      } catch (error) {
+        console.error('Failed to load auth session:', error);
+        if (mounted) {
+          setAuthLoading(false);
+        }
+      }
+    };
+
+    void bootstrap();
+
+    const unsubscribe = onAuthStateChanged((session) => {
+      setAuthLoading(true);
+      void syncProfile(session);
+    });
+
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
   }, []);
 
-  // Listen for nara browser open event
+  useEffect(() => {
+    const userId = authSession?.user?.id;
+    if (!userId) {
+      setWorkspaceReady(false);
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        await migrateWorkspaceToSupabaseOnce(userId);
+      } catch (error) {
+        console.error('Workspace one-time migration failed:', error);
+      }
+
+      if (cancelled) {
+        return;
+      }
+
+      try {
+        const snapshot = loadWorkspace(userId);
+        setDrafts(Array.isArray(snapshot.drafts) ? snapshot.drafts : EMPTY_DRAFTS);
+        setPastProposals(Array.isArray(snapshot.pastProposals) ? snapshot.pastProposals : EMPTY_PROPOSALS);
+        setInstructors(Array.isArray(snapshot.instructors) ? snapshot.instructors : EMPTY_INSTRUCTORS);
+        setAgentConfigs(Array.isArray(snapshot.agentConfigs) && snapshot.agentConfigs.length > 0 ? snapshot.agentConfigs : DEFAULT_AGENTS);
+        setGlobalModel(snapshot.globalModel || DEFAULT_MODEL);
+        setAiApiKey(snapshot.aiApiKey ?? ENV_GEMINI_API_KEY);
+        setNaraApiKey(snapshot.naraApiKey ?? ENV_NARA_API_KEY);
+        setShouldEncodeKey(typeof snapshot.shouldEncodeKey === 'boolean' ? snapshot.shouldEncodeKey : parseBooleanEnv(ENV_NARA_SHOULD_ENCODE));
+      } catch (error) {
+        console.error('Failed to initialize workspace state:', error);
+        resetUserWorkspaceState();
+      } finally {
+        setWorkspaceReady(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authSession?.user?.id]);
+
+  useEffect(() => {
+    if (!authSession?.user?.id || workspaceReady) {
+      return;
+    }
+
+    // Failsafe: never block the UI indefinitely on workspace bootstrap.
+    const timeoutId = window.setTimeout(() => {
+      setWorkspaceReady(true);
+    }, 2500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [authSession?.user?.id, workspaceReady]);
+
+  useEffect(() => {
+    if (!workspaceReady) {
+      return;
+    }
+    const userId = authSession?.user?.id;
+    if (!userId) {
+      return;
+    }
+
+    const snapshot = {
+      drafts,
+      pastProposals,
+      instructors,
+      agentConfigs,
+      globalModel,
+      aiApiKey,
+      naraApiKey,
+      shouldEncodeKey
+    };
+
+    saveWorkspace(userId, snapshot);
+    void mirrorWorkspaceToSupabase(userId, snapshot).catch((error) => {
+      console.error('Failed to mirror workspace to Supabase:', error);
+    });
+  }, [
+    workspaceReady,
+    authSession?.user?.id,
+    drafts,
+    pastProposals,
+    instructors,
+    agentConfigs,
+    globalModel,
+    aiApiKey,
+    naraApiKey,
+    shouldEncodeKey
+  ]);
+
+  useEffect(() => {
+    if (!aiApiKey && ENV_GEMINI_API_KEY) {
+      setAiApiKey(ENV_GEMINI_API_KEY);
+    }
+    if (!naraApiKey && ENV_NARA_API_KEY) {
+      setNaraApiKey(ENV_NARA_API_KEY);
+    }
+    if (!shouldEncodeKey && parseBooleanEnv(ENV_NARA_SHOULD_ENCODE)) {
+      setShouldEncodeKey(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!authSession?.user?.id) {
+      setPinnedBids([]);
+      return;
+    }
+    void loadPinnedBids();
+  }, [authSession?.user?.id]);
+
   useEffect(() => {
     const handleOpenNaraBrowser = () => setShowNaraBrowser(true);
     const handleSelectPinnedBid = (event: Event) => {
@@ -432,27 +444,25 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Helper to update the current draft in the drafts list whenever state changes
-  const updateDraft = (
-    id: string,
-    updates: Partial<ProposalDraft>
-  ) => {
-    setDrafts(prev => prev.map(d => d.id === id ? { ...d, ...updates, lastUpdated: new Date() } : d));
+  const updateDraft = (id: string, updates: Partial<ProposalDraft>) => {
+    setDrafts(prev => prev.map(draft => (draft.id === id ? { ...draft, ...updates, lastUpdated: new Date() } : draft)));
   };
 
   const handleDeleteDraft = (id: string) => {
-    setDrafts(prev => prev.filter(d => d.id !== id));
+    setDrafts(prev => prev.filter(draft => draft.id !== id));
     if (currentDraftId === id) {
       setCurrentDraftId(null);
       setView('dashboard');
     }
   };
 
-  // Handlers to advance steps
   const handleUploadComplete = (files: RFPMetadata[]) => {
-    const shouldSave = window.confirm("파일 업로드 완료. 제안서 초안을 저장하고 분석을 진행하시겠습니까?");
+    const shouldSave = window.confirm('파일 업로드가 완료되었습니다. 현재 상태를 초안으로 저장하시겠습니까?');
 
     setWorkflowType('enterprise');
+    setNaraRequirementSession(null);
+    setCurrentNaraStage(NaraWorkflowStage.REQUIREMENTS_EXTRACT);
+    setNaraStageError(null);
     setUploadedFiles(files);
     setCurrentStep(AppStep.ANALYSIS);
 
@@ -469,84 +479,229 @@ const App: React.FC = () => {
 
   const handleAnalysisConfirm = (data: AnalysisResult) => {
     setAnalysisResult(data);
+    if (workflowType === 'nara-bid') {
+      setCurrentNaraStage(NaraWorkflowStage.RESEARCH);
+      setCurrentStep(AppStep.RESEARCH);
+      setNaraStageError(null);
+      if (currentDraftId) {
+        updateDraft(currentDraftId, {
+          analysis: data,
+          step: AppStep.RESEARCH,
+          naraStage: NaraWorkflowStage.RESEARCH
+        });
+      }
+      return;
+    }
+
     setCurrentStep(AppStep.RESEARCH);
     if (currentDraftId) {
-      if (window.confirm("요구사항 분석 결과를 저장하시겠습니까?")) {
-        updateDraft(currentDraftId, { analysis: data, step: AppStep.RESEARCH });
-      }
+      updateDraft(currentDraftId, { analysis: data, step: AppStep.RESEARCH });
     }
   };
 
   const handleResearchComplete = (trendData: TrendInsight[]) => {
     setTrends(trendData);
+    if (workflowType === 'nara-bid') {
+      setCurrentNaraStage(NaraWorkflowStage.STRATEGY);
+      setCurrentStep(AppStep.STRATEGY);
+      setNaraStageError(null);
+      if (currentDraftId) {
+        updateDraft(currentDraftId, {
+          trends: trendData,
+          step: AppStep.STRATEGY,
+          naraStage: NaraWorkflowStage.STRATEGY
+        });
+      }
+      return;
+    }
+
     setCurrentStep(AppStep.STRATEGY);
     if (currentDraftId) {
-      if (window.confirm("트렌드 분석 결과를 저장하시겠습니까?")) {
-        updateDraft(currentDraftId, { trends: trendData, step: AppStep.STRATEGY });
-      }
+      updateDraft(currentDraftId, { trends: trendData, step: AppStep.STRATEGY });
     }
   };
 
   const handleStrategyComplete = (strategies: StrategyOption[]) => {
     setSelectedStrategies(strategies);
+    if (workflowType === 'nara-bid') {
+      setCurrentNaraStage(NaraWorkflowStage.CURRICULUM);
+      setCurrentStep(AppStep.CURRICULUM);
+      setNaraStageError(null);
+      if (currentDraftId) {
+        updateDraft(currentDraftId, {
+          selectedStrategies: strategies,
+          step: AppStep.CURRICULUM,
+          naraStage: NaraWorkflowStage.CURRICULUM
+        });
+      }
+      return;
+    }
+
     setCurrentStep(AppStep.CURRICULUM);
     if (currentDraftId) {
-      if (window.confirm("선택한 전략을 저장하고 과정 매칭을 진행하시겠습니까?")) {
-        updateDraft(currentDraftId, { selectedStrategies: strategies, step: AppStep.CURRICULUM });
-      }
+      updateDraft(currentDraftId, { selectedStrategies: strategies, step: AppStep.CURRICULUM });
     }
   };
 
   const handleCurriculumComplete = (matchData: CourseMatch[]) => {
     setMatches(matchData);
+    if (workflowType === 'nara-bid') {
+      setCurrentNaraStage(NaraWorkflowStage.GENERATE_PREVIEW);
+      setCurrentStep(AppStep.PREVIEW);
+      setNaraStageError(null);
+      if (currentDraftId) {
+        updateDraft(currentDraftId, {
+          matches: matchData,
+          step: AppStep.PREVIEW,
+          naraStage: NaraWorkflowStage.GENERATE_PREVIEW
+        });
+      }
+      return;
+    }
+
     setCurrentStep(AppStep.PREVIEW);
     if (currentDraftId) {
-      if (window.confirm("과정 매칭 결과를 저장하시겠습니까?")) {
-        updateDraft(currentDraftId, { matches: matchData, step: AppStep.PREVIEW });
-      }
+      updateDraft(currentDraftId, { matches: matchData, step: AppStep.PREVIEW });
     }
   };
 
   const handleBack = () => {
     if (currentStep > AppStep.UPLOAD) {
-      const prevStep = currentStep - 1;
-      setCurrentStep(prevStep);
+      const previous = currentStep - 1;
+      setCurrentStep(previous);
       if (currentDraftId) {
-        // Automatically save step navigation
-        updateDraft(currentDraftId, { step: prevStep });
+        updateDraft(currentDraftId, { step: previous });
       }
     }
   };
 
-  const handleSaveAgents = (updatedAgents: AgentConfig[]) => {
-    setAgentConfigs(updatedAgents);
-  };
-
   const getAgentConfig = (agentId: string) => agentConfigs.find(agent => agent.id === agentId);
+
   const analysisDataForFlow = analysisResult ?? EMPTY_ANALYSIS_RESULT;
   const currentNaraFile = uploadedFiles.find(file => file.source === 'nara-bid') ?? null;
+  const knowledgeAuthToken = authSession?.access_token;
+  const knowledgeGroupKey = userProfile?.groupKey ?? '';
+  const isAdmin = userProfile?.role === 'admin';
 
-  const handleNaraWorkflowStepUpdate = (step: AppStep) => {
-    setCurrentStep(step);
+  const updateNaraStage = (stage: NaraWorkflowStage) => {
+    setCurrentNaraStage(stage);
+    setCurrentStep(naraStageToAppStep(stage));
+    setNaraStageError(null);
     if (currentDraftId) {
-      updateDraft(currentDraftId, { step });
+      updateDraft(currentDraftId, {
+        step: naraStageToAppStep(stage),
+        naraStage: stage
+      });
     }
   };
 
+  const canMoveToNaraStage = (target: NaraWorkflowStage): string | null => {
+    const targetIndex = NARA_STAGE_ORDER.indexOf(target);
+    const currentIndex = NARA_STAGE_ORDER.indexOf(currentNaraStage);
+    if (targetIndex <= currentIndex) return null;
+
+    if (targetIndex >= NARA_STAGE_ORDER.indexOf(NaraWorkflowStage.REQUIREMENTS_APPROVAL) && !naraRequirementSession) {
+      return '요건 추출을 먼저 실행해 주세요.';
+    }
+    if (targetIndex >= NARA_STAGE_ORDER.indexOf(NaraWorkflowStage.ANALYSIS_REVIEW) && !naraRequirementSession?.approval?.generationReady) {
+      return '필수 항목 승인 완료 후에만 다음 단계로 이동할 수 있습니다.';
+    }
+    if (targetIndex >= NARA_STAGE_ORDER.indexOf(NaraWorkflowStage.RESEARCH) && !analysisResult) {
+      return '분석 확인 단계를 완료해 주세요.';
+    }
+    if (targetIndex >= NARA_STAGE_ORDER.indexOf(NaraWorkflowStage.STRATEGY) && trends.length === 0) {
+      return '트렌드 단계를 먼저 완료해 주세요.';
+    }
+    if (targetIndex >= NARA_STAGE_ORDER.indexOf(NaraWorkflowStage.CURRICULUM) && selectedStrategies.length === 0) {
+      return '전략 단계를 먼저 완료해 주세요.';
+    }
+    if (targetIndex >= NARA_STAGE_ORDER.indexOf(NaraWorkflowStage.GENERATE_PREVIEW) && matches.length === 0) {
+      return '매칭 단계를 먼저 완료해 주세요.';
+    }
+
+    return null;
+  };
+
+  const handleNaraStageClick = (target: NaraWorkflowStage) => {
+    const reason = canMoveToNaraStage(target);
+    if (reason) {
+      setNaraStageError(reason);
+      return;
+    }
+    if (
+      target === NaraWorkflowStage.ANALYSIS_REVIEW &&
+      currentNaraStage === NaraWorkflowStage.REQUIREMENTS_APPROVAL &&
+      naraRequirementSession
+    ) {
+      const fallback = analysisResult || EMPTY_ANALYSIS_RESULT;
+      const mapped = mapNaraRequirementsToAnalysis(naraRequirementSession, fallback);
+      setAnalysisResult(mapped.analysis);
+      if (currentDraftId) {
+        updateDraft(currentDraftId, { analysis: mapped.analysis });
+      }
+    }
+    updateNaraStage(target);
+  };
+
+  const handleNaraRequirementSessionChange = (session: BidRequirementSession) => {
+    setNaraRequirementSession(session);
+    if (currentDraftId) {
+      updateDraft(currentDraftId, {
+        naraAnalysisId: session.analysisId,
+        naraRequirementReady: Boolean(session.approval?.generationReady)
+      });
+    }
+  };
+
+  const handleNaraApprovalToAnalysis = () => {
+    if (!naraRequirementSession?.approval?.generationReady) {
+      setNaraStageError('필수 항목 승인이 완료되어야 분석 확인 단계로 이동할 수 있습니다.');
+      return;
+    }
+
+    const fallback = analysisResult || EMPTY_ANALYSIS_RESULT;
+    const mapped = mapNaraRequirementsToAnalysis(naraRequirementSession, fallback);
+    setAnalysisResult(mapped.analysis);
+    updateNaraStage(NaraWorkflowStage.ANALYSIS_REVIEW);
+    if (currentDraftId) {
+      updateDraft(currentDraftId, {
+        analysis: mapped.analysis,
+        naraStage: NaraWorkflowStage.ANALYSIS_REVIEW,
+        step: naraStageToAppStep(NaraWorkflowStage.ANALYSIS_REVIEW)
+      });
+    }
+  };
+
+  const handleNaraRequirementNext = () => {
+    if (currentNaraStage === NaraWorkflowStage.REQUIREMENTS_EXTRACT) {
+      updateNaraStage(NaraWorkflowStage.REQUIREMENTS_APPROVAL);
+      return;
+    }
+    handleNaraApprovalToAnalysis();
+  };
+
+  const handleNaraBack = () => {
+    const currentIndex = NARA_STAGE_ORDER.indexOf(currentNaraStage);
+    if (currentIndex <= 0) {
+      setView('dashboard');
+      return;
+    }
+    const previous = NARA_STAGE_ORDER[currentIndex - 1];
+    updateNaraStage(previous);
+  };
+
   const startNewProposal = () => {
-    // Reset State
     setWorkflowType('enterprise');
     setUploadedFiles([]);
     setAnalysisResult(null);
     setTrends([]);
     setSelectedStrategies([]);
     setMatches([]);
+    setNaraRequirementSession(null);
+    setCurrentNaraStage(NaraWorkflowStage.REQUIREMENTS_EXTRACT);
+    setNaraStageError(null);
     setCurrentStep(AppStep.UPLOAD);
-
-    // Modified: Do not create draft immediately. 
-    // Draft will be created in handleUploadComplete if user confirms save.
     setCurrentDraftId(null);
-
     setView('wizard');
   };
 
@@ -554,49 +709,52 @@ const App: React.FC = () => {
     const isNaraDraft = draft.files.some(file => file.source === 'nara-bid');
     setWorkflowType(isNaraDraft ? 'nara-bid' : 'enterprise');
 
-    // Restore State
     setCurrentDraftId(draft.id);
     setUploadedFiles(draft.files);
     setAnalysisResult(draft.analysis);
     setTrends(draft.trends);
     setSelectedStrategies(draft.selectedStrategies || []);
     setMatches(draft.matches);
-    setCurrentStep(draft.step);
-
+    setNaraRequirementSession(null);
+    setNaraStageError(null);
+    if (isNaraDraft) {
+      const stage = draft.naraStage || legacyAppStepToNaraStage(draft.step);
+      setCurrentNaraStage(stage);
+      setCurrentStep(naraStageToAppStep(stage));
+    } else {
+      setCurrentNaraStage(NaraWorkflowStage.REQUIREMENTS_EXTRACT);
+      setCurrentStep(draft.step);
+    }
     setView('wizard');
   };
 
   const handleUpdateDraftStatus = (id: string, newStatus: 'Won' | 'Lost') => {
-    const draft = drafts.find(d => d.id === id);
-    if (!draft) return;
-
-    if (window.confirm(`이 제안서를 '${newStatus === 'Won' ? '수주 성공' : '수주 실패'}' 상태로 변경하고 아카이브 하시겠습니까?`)) {
-      // Create a past proposal entry
-      const newProposal: PastProposal = {
-        id: draft.id,
-        title: draft.analysis?.programName || 'Untitled Project',
-        clientName: draft.analysis?.clientName || 'Unknown Client',
-        industry: draft.analysis?.industry || 'Unknown Industry',
-        date: new Date().toISOString().split('T')[0],
-        tags: draft.analysis?.modules || [],
-        fileName: draft.files[0]?.fileName || 'proposal_final.pptx',
-        status: newStatus,
-        amount: newStatus === 'Won' ? '₩50,000,000' : '₩0', // Dummy amount
-        progress: 100,
-        qualityAssessment: undefined
-      };
-
-      setPastProposals(prev => [newProposal, ...prev]);
-      setDrafts(prev => prev.filter(d => d.id !== id));
+    const draft = drafts.find(item => item.id === id);
+    if (!draft) {
+      return;
     }
+
+    const newProposal: PastProposal = {
+      id: draft.id,
+      title: draft.analysis?.programName || 'Untitled Project',
+      clientName: draft.analysis?.clientName || 'Unknown Client',
+      industry: draft.analysis?.industry || 'Unknown Industry',
+      date: new Date().toISOString().split('T')[0],
+      tags: draft.analysis?.modules || [],
+      fileName: draft.files[0]?.fileName || 'proposal_final.pptx',
+      status: newStatus,
+      amount: newStatus === 'Won' ? '$50,000' : '$0',
+      progress: 100,
+      qualityAssessment: undefined
+    };
+
+    setPastProposals(prev => [newProposal, ...prev]);
+    setDrafts(prev => prev.filter(item => item.id !== id));
   };
 
-  // Nara Bid Selection Handler
   const handleBidSelection = (bid: BidItem) => {
-    // Convert bid to RFP format
     const rfpData = convertBidToRFP(bid);
 
-    // Create RFPMetadata with bid source
     const bidMetadata: RFPMetadata = {
       fileName: `${bid.bidNtceNm.substring(0, 50)}_${bid.bidNtceNo}.txt`,
       uploadDate: new Date().toLocaleDateString(),
@@ -605,22 +763,158 @@ const App: React.FC = () => {
       bidData: bid
     };
 
-    // Set uploaded files and analysis result directly
     setWorkflowType('nara-bid');
     setUploadedFiles([bidMetadata]);
     setAnalysisResult(rfpData);
+    setTrends([]);
+    setSelectedStrategies([]);
+    setMatches([]);
+    setNaraRequirementSession(null);
+    setCurrentNaraStage(NaraWorkflowStage.REQUIREMENTS_EXTRACT);
     setCurrentStep(AppStep.ANALYSIS);
+    setNaraStageError(null);
     setShowNaraBrowser(false);
     setView('wizard');
 
     const newDraft = createDraft(AppStep.ANALYSIS, [bidMetadata], rfpData);
+    newDraft.naraStage = NaraWorkflowStage.REQUIREMENTS_EXTRACT;
+    newDraft.naraRequirementReady = false;
     setDrafts(prev => [newDraft, ...prev]);
     setCurrentDraftId(newDraft.id);
   };
 
+  useEffect(() => {
+    if (workflowType !== 'nara-bid') return;
+    if (naraRequirementSession) return;
+    const userId = authSession?.user?.id;
+    const bid = currentNaraFile?.bidData;
+    if (!userId || !bid?.bidNtceNo) return;
+
+    const local = loadBidRequirementSessionLocal(userId, bid.bidNtceNo, bid.bidNtceOrd);
+    if (local) {
+      setNaraRequirementSession(local);
+      if (currentDraftId) {
+        updateDraft(currentDraftId, {
+          naraAnalysisId: local.analysisId,
+          naraRequirementReady: Boolean(local.approval?.generationReady)
+        });
+      }
+    }
+
+    void (async () => {
+      const remote = await loadLatestBidRequirementSession(userId, bid.bidNtceNo, bid.bidNtceOrd);
+      if (!remote) return;
+
+      if (!local) {
+        setNaraRequirementSession(remote);
+        if (currentDraftId) {
+          updateDraft(currentDraftId, {
+            naraAnalysisId: remote.analysisId,
+            naraRequirementReady: Boolean(remote.approval?.generationReady)
+          });
+        }
+        return;
+      }
+
+      const localUpdatedAt = Date.parse(local.updatedAt || '');
+      const remoteUpdatedAt = Date.parse(remote.updatedAt || '');
+      const useRemote = Number.isNaN(localUpdatedAt) || (!Number.isNaN(remoteUpdatedAt) && remoteUpdatedAt >= localUpdatedAt);
+      if (!useRemote) return;
+
+      setNaraRequirementSession(remote);
+      if (currentDraftId) {
+        updateDraft(currentDraftId, {
+          naraAnalysisId: remote.analysisId,
+          naraRequirementReady: Boolean(remote.approval?.generationReady)
+        });
+      }
+    })();
+  }, [authSession?.user?.id, currentDraftId, currentNaraFile?.bidData, naraRequirementSession, workflowType]);
+
+  const handleLogin = async () => {
+    if (!loginEmail.trim() || !loginPassword.trim()) {
+      setLoginError('이메일과 비밀번호를 입력해 주세요.');
+      return;
+    }
+
+    setLoginError(null);
+    setLoggingIn(true);
+    try {
+      await signInWithPassword(loginEmail.trim(), loginPassword);
+      setLoginPassword('');
+    } catch (error) {
+      setLoginError(error instanceof Error ? error.message : '로그인에 실패했습니다.');
+    } finally {
+      setLoggingIn(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Failed to sign out:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (view === 'agents' && !isAdmin) {
+      setView('dashboard');
+    }
+  }, [isAdmin, view]);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
+        <div className="bg-white border border-slate-200 rounded-xl px-6 py-5 text-sm text-slate-600">
+          인증 및 사용자 작업공간을 불러오는 중입니다...
+        </div>
+      </div>
+    );
+  }
+
+  if (!authSession) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
+        <div className="w-full max-w-md bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
+          <div>
+            <h1 className="text-xl font-bold text-slate-900">Nara AI 로그인</h1>
+            <p className="text-sm text-slate-500 mt-1">전체 기능은 로그인 후 사용할 수 있습니다.</p>
+          </div>
+          <input
+            type="email"
+            value={loginEmail}
+            onChange={(event) => setLoginEmail(event.target.value)}
+            placeholder="이메일"
+            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+          />
+          <input
+            type="password"
+            value={loginPassword}
+            onChange={(event) => setLoginPassword(event.target.value)}
+            placeholder="비밀번호"
+            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+          />
+          {loginError && (
+            <div className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+              {loginError}
+            </div>
+          )}
+          <button
+            onClick={() => void handleLogin()}
+            disabled={loggingIn}
+            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white rounded-lg font-semibold"
+          >
+            <User size={16} />
+            {loggingIn ? '로그인 중...' : '로그인'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
-      {/* Header */}
       <header className="bg-slate-900 text-white shadow-lg sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => setView('dashboard')}>
@@ -630,8 +924,8 @@ const App: React.FC = () => {
             <span className="font-bold text-xl tracking-tight">Expert<span className="text-blue-400">Consulting</span></span>
             <span className="hidden sm:inline-block ml-2 text-xs bg-slate-800 px-2 py-0.5 rounded text-slate-300 border border-slate-700">Proposal Automation</span>
           </div>
+
           <div className="flex items-center gap-3 text-sm">
-            {/* Navigation Buttons */}
             <div className="flex bg-slate-800 rounded-lg p-1 mr-4">
               <button
                 onClick={() => setView('dashboard')}
@@ -655,22 +949,39 @@ const App: React.FC = () => {
                 <span className="hidden md:inline">나라장터</span>
               </button>
               <button
-                onClick={() => setView('agents')}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors ${view === 'agents' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}
+                onClick={() => setView('reports')}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors ${view === 'reports' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}
               >
-                <Settings size={16} />
-                <span className="hidden md:inline">에이전트 설정</span>
+                <FileText size={16} />
+                <span className="hidden md:inline">리포트</span>
               </button>
+              {isAdmin && (
+                <button
+                  onClick={() => setView('agents')}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors ${view === 'agents' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}
+                >
+                  <Settings size={16} />
+                  <span className="hidden md:inline">에이전트</span>
+                </button>
+              )}
             </div>
 
-            <span className="w-px h-4 bg-slate-700 mx-1"></span>
-            <span className="hidden sm:block text-slate-400">안녕하세요, 김제안 수석컨설턴트님</span>
-            <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center border border-slate-600 text-xs font-bold">KJ</div>
+            <div className="hidden md:flex items-center gap-2 text-xs bg-slate-800 border border-slate-700 px-2.5 py-1 rounded">
+              <User size={12} />
+              <span>{userProfile?.displayName || authSession.user.email}</span>
+              <span className="text-slate-400">({isAdmin ? 'admin' : 'member'})</span>
+            </div>
+            <button
+              onClick={() => void handleLogout()}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs border border-slate-700 rounded bg-slate-800 hover:bg-slate-700"
+            >
+              <LogOut size={12} />
+              로그아웃
+            </button>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="flex-1 w-full">
         {view === 'dashboard' ? (
           <Dashboard
@@ -691,52 +1002,147 @@ const App: React.FC = () => {
             onUpdateProposals={setPastProposals}
             onUpdateInstructors={setInstructors}
             onClose={() => setView('dashboard')}
-            apiKey={aiApiKey}
+            apiKey={effectiveAiApiKey}
             agentConfigs={agentConfigs}
             globalModel={globalModel}
+            session={authSession}
+            profile={userProfile}
+            authLoading={authLoading}
           />
         ) : view === 'nara' ? (
           <NaraBidManager
             onSelectBid={handleBidSelection}
             onClose={() => setView('dashboard')}
-            apiKey={naraApiKey}
+            apiKey={effectiveNaraApiKey}
             shouldEncodeKey={shouldEncodeKey}
             onRefreshPinned={loadPinnedBids}
           />
+        ) : view === 'reports' ? (
+          <ReportPortfolio />
         ) : view === 'agents' ? (
-          <AgentManagement
-            agents={agentConfigs}
-            onSave={handleSaveAgents}
-            onClose={() => setView('dashboard')}
-            globalModel={globalModel}
-            onSaveGlobalModel={setGlobalModel}
-            aiApiKey={aiApiKey}
-            onSaveAiApiKey={setAiApiKey}
-            naraApiKey={naraApiKey}
-            onSaveNaraApiKey={setNaraApiKey}
-            shouldEncodeKey={shouldEncodeKey}
-            onSaveShouldEncodeKey={setShouldEncodeKey}
-          />
+          isAdmin ? (
+            <AgentManagement
+              agents={agentConfigs}
+              onSave={setAgentConfigs}
+              onClose={() => setView('dashboard')}
+              globalModel={globalModel}
+              onSaveGlobalModel={setGlobalModel}
+              aiApiKey={effectiveAiApiKey}
+              onSaveAiApiKey={setAiApiKey}
+              naraApiKey={effectiveNaraApiKey}
+              onSaveNaraApiKey={setNaraApiKey}
+              shouldEncodeKey={shouldEncodeKey}
+              onSaveShouldEncodeKey={setShouldEncodeKey}
+            />
+          ) : (
+            <div className="max-w-xl mx-auto px-4 py-12">
+              <div className="bg-white rounded-xl border border-red-100 p-6 text-sm text-red-700 flex items-start gap-3">
+                <ShieldAlert size={18} className="mt-0.5" />
+                에이전트 관리 센터는 admin 계정만 접근할 수 있습니다.
+              </div>
+            </div>
+          )
         ) : (
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fade-in-up">
             {workflowType === 'nara-bid' ? (
-              <NaraProposalWorkflow
-                analysisData={analysisDataForFlow}
-                sourceFile={currentNaraFile}
-                agentConfig={getAgentConfig('proposal-assembler')}
-                apiKey={aiApiKey}
-                globalModel={globalModel}
-                onUpdateDraftStep={handleNaraWorkflowStepUpdate}
-                onBackToDashboard={() => setView('dashboard')}
-              />
-            ) : (
               <>
-                <StepIndicator currentStep={currentStep} onStepClick={(step) => setCurrentStep(step)} />
+                <NaraStepIndicator
+                  currentStage={currentNaraStage}
+                  onStageClick={handleNaraStageClick}
+                />
+
+                {naraStageError && (
+                  <div className="mb-4 text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                    {naraStageError}
+                  </div>
+                )}
 
                 <div className="min-h-[500px]">
-                  {currentStep === AppStep.UPLOAD && (
-                    <FileUploader onUploadComplete={handleUploadComplete} />
+                  {(currentNaraStage === NaraWorkflowStage.REQUIREMENTS_EXTRACT || currentNaraStage === NaraWorkflowStage.REQUIREMENTS_APPROVAL) && (
+                    <NaraRequirementWorkflow
+                      mode={currentNaraStage === NaraWorkflowStage.REQUIREMENTS_EXTRACT ? 'extract' : 'approval'}
+                      analysisData={analysisDataForFlow}
+                      sourceFile={currentNaraFile}
+                      agentConfig={getAgentConfig('proposal-assembler')}
+                      naraApiKey={effectiveNaraApiKey}
+                      knowledgeGroupKey={knowledgeGroupKey}
+                      globalModel={globalModel}
+                      userId={authSession?.user?.id}
+                      session={naraRequirementSession}
+                      onSessionChange={handleNaraRequirementSessionChange}
+                      onBack={handleNaraBack}
+                      onNext={handleNaraRequirementNext}
+                    />
                   )}
+
+                  {currentNaraStage === NaraWorkflowStage.ANALYSIS_REVIEW && (
+                    <RequirementsReview
+                      files={uploadedFiles}
+                      onConfirm={handleAnalysisConfirm}
+                      onBack={() => updateNaraStage(NaraWorkflowStage.REQUIREMENTS_APPROVAL)}
+                      agentConfig={getAgentConfig('rfp-analyst')}
+                      initialData={analysisResult}
+                      apiKey={effectiveAiApiKey}
+                      globalModel={globalModel}
+                      allowReanalyze={false}
+                    />
+                  )}
+
+                  {currentNaraStage === NaraWorkflowStage.RESEARCH && (
+                    <TrendResearch
+                      analysisData={analysisDataForFlow}
+                      onNext={handleResearchComplete}
+                      onBack={() => updateNaraStage(NaraWorkflowStage.ANALYSIS_REVIEW)}
+                      agentConfig={getAgentConfig('trend-researcher')}
+                      initialData={trends}
+                      apiKey={effectiveAiApiKey}
+                      globalModel={globalModel}
+                    />
+                  )}
+
+                  {currentNaraStage === NaraWorkflowStage.STRATEGY && (
+                    <StrategyPlanning
+                      analysisData={analysisDataForFlow}
+                      trendData={trends}
+                      onNext={handleStrategyComplete}
+                      onBack={() => updateNaraStage(NaraWorkflowStage.RESEARCH)}
+                      agentConfig={getAgentConfig('strategy-planner')}
+                      qaConfig={getAgentConfig('qa-agent')}
+                      initialSelection={selectedStrategies}
+                      apiKey={effectiveAiApiKey}
+                      globalModel={globalModel}
+                    />
+                  )}
+
+                  {currentNaraStage === NaraWorkflowStage.CURRICULUM && (
+                    <CurriculumMatching
+                      analysisData={analysisDataForFlow}
+                      trendData={trends}
+                      selectedStrategies={selectedStrategies}
+                      onNext={handleCurriculumComplete}
+                      onBack={() => updateNaraStage(NaraWorkflowStage.STRATEGY)}
+                      agentConfig={getAgentConfig('curriculum-matcher')}
+                      initialData={matches}
+                      apiKey={effectiveAiApiKey}
+                      globalModel={globalModel}
+                    />
+                  )}
+
+                  {currentNaraStage === NaraWorkflowStage.GENERATE_PREVIEW && (
+                    <NaraGenerateWorkflow
+                      session={naraRequirementSession}
+                      onBack={() => updateNaraStage(NaraWorkflowStage.CURRICULUM)}
+                      onDone={() => setView('dashboard')}
+                    />
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <StepIndicator currentStep={currentStep} onStepClick={setCurrentStep} />
+
+                <div className="min-h-[500px]">
+                  {currentStep === AppStep.UPLOAD && <FileUploader onUploadComplete={handleUploadComplete} />}
 
                   {currentStep === AppStep.ANALYSIS && (
                     <RequirementsReview
@@ -745,7 +1151,7 @@ const App: React.FC = () => {
                       onBack={handleBack}
                       agentConfig={getAgentConfig('rfp-analyst')}
                       initialData={analysisResult}
-                      apiKey={aiApiKey}
+                      apiKey={effectiveAiApiKey}
                       globalModel={globalModel}
                     />
                   )}
@@ -757,7 +1163,7 @@ const App: React.FC = () => {
                       onBack={handleBack}
                       agentConfig={getAgentConfig('trend-researcher')}
                       initialData={trends}
-                      apiKey={aiApiKey}
+                      apiKey={effectiveAiApiKey}
                       globalModel={globalModel}
                     />
                   )}
@@ -771,7 +1177,7 @@ const App: React.FC = () => {
                       agentConfig={getAgentConfig('strategy-planner')}
                       qaConfig={getAgentConfig('qa-agent')}
                       initialSelection={selectedStrategies}
-                      apiKey={aiApiKey}
+                      apiKey={effectiveAiApiKey}
                       globalModel={globalModel}
                     />
                   )}
@@ -785,7 +1191,7 @@ const App: React.FC = () => {
                       onBack={handleBack}
                       agentConfig={getAgentConfig('curriculum-matcher')}
                       initialData={matches}
-                      apiKey={aiApiKey}
+                      apiKey={effectiveAiApiKey}
                       globalModel={globalModel}
                     />
                   )}
@@ -796,8 +1202,10 @@ const App: React.FC = () => {
                       trends={trends}
                       matches={matches}
                       agentConfigs={agentConfigs}
-                      apiKey={aiApiKey}
+                      apiKey={effectiveAiApiKey}
                       globalModel={globalModel}
+                      knowledgeGroupKey={knowledgeGroupKey}
+                      knowledgeAuthToken={knowledgeAuthToken}
                       onBack={handleBack}
                     />
                   )}
@@ -808,12 +1216,11 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* Nara Bid Browser Modal */}
       {showNaraBrowser && (
         <NaraBidBrowser
           onSelectBid={handleBidSelection}
           onClose={() => setShowNaraBrowser(false)}
-          apiKey={naraApiKey}
+          apiKey={effectiveNaraApiKey}
           shouldEncodeKey={shouldEncodeKey}
         />
       )}
